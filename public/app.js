@@ -18,6 +18,9 @@ const state = {
   holdTimer: null,
   holdStart: null,
   dashboardScore: 100,
+  currentFeatureId: null,
+  featuresCache: null,
+  featureSearchQuery: "",
 };
 
 const inFlightOps = new Set();
@@ -244,6 +247,8 @@ function navigateTo(screenId) {
   if (screenId === "schedule") loadSchedule();
   if (screenId === "support") loadSupportData();
   if (screenId === "settings") loadSettingsData();
+  if (screenId === "features") loadFeatures();
+  if (screenId === "feature-detail") loadFeatureDetail(state.currentFeatureId);
 }
 
 // Event Listeners Setup
@@ -998,6 +1003,30 @@ function setupEventListeners() {
     document.getElementById("hygieneBreakdownModal").style.display = "none";
   });
 
+  // ─── Features ────────────────────────────────────────────────
+  const featureSearchInput = document.getElementById('featureSearchInput');
+  const featureSearchClear = document.getElementById('featureSearchClear');
+  if (featureSearchInput) {
+      featureSearchInput.addEventListener('input', () => {
+          state.featureSearchQuery = featureSearchInput.value.toLowerCase();
+          featureSearchClear.style.display = state.featureSearchQuery ? 'block' : 'none';
+          renderFeaturesGrid();
+      });
+  }
+  if (featureSearchClear) {
+      featureSearchClear.addEventListener('click', () => {
+          featureSearchInput.value = '';
+          state.featureSearchQuery = '';
+          featureSearchClear.style.display = 'none';
+          renderFeaturesGrid();
+      });
+  }
+
+  const btnBackToFeatures = document.getElementById('btnBackToFeatures');
+  if (btnBackToFeatures) {
+      btnBackToFeatures.addEventListener('click', () => navigateTo('features'));
+  }
+
   // Initialize Desktop Command Palette (Ctrl+K)
   initCommandPalette();
 }
@@ -1656,6 +1685,298 @@ async function executeDeepClean() {
 }
 
 // ========================================================
+// ALL FEATURES SYSTEM
+// ========================================================
+
+async function loadFeatures() {
+    try {
+        const data = await apiFetch('/features');
+        state.featuresCache = data;
+        
+        // Update analytics banner
+        const analytics = await apiFetch('/features/analytics');
+        const el = (id) => document.getElementById(id);
+        el('analyticsActiveCount').textContent = analytics.features_active || 0;
+        el('analyticsActionsCount').textContent = analytics.total_actions || 0;
+        el('analyticsErrorsCount').textContent = analytics.total_errors || 0;
+        
+        // Render favorites
+        renderFeatureFavorites(data.features, data.favorites);
+        
+        // Render grid
+        renderFeaturesGrid();
+    } catch (e) {
+        console.error('Failed to load features:', e);
+        showToast('Failed to load features', 'error');
+    }
+}
+
+function renderFeatureFavorites(features, favoriteIds) {
+    const container = document.getElementById('featureFavorites');
+    if (!favoriteIds || favoriteIds.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = 'flex';
+    const favFeatures = features.filter(f => favoriteIds.includes(f.id));
+    container.innerHTML = favFeatures.map(f => `
+        <button class="favorite-chip" onclick="openFeatureDetail('${f.id}')">
+            <span class="favorite-chip-icon">${f.icon}</span>
+            <span>${f.name}</span>
+        </button>
+    `).join('');
+}
+
+function renderFeaturesGrid() {
+    const container = document.getElementById('featuresCategoryContainer');
+    if (!state.featuresCache) return;
+    
+    let features = state.featuresCache.features;
+    
+    // Apply search filter
+    if (state.featureSearchQuery) {
+        const q = state.featureSearchQuery;
+        features = features.filter(f =>
+            f.name.toLowerCase().includes(q) ||
+            f.description.toLowerCase().includes(q) ||
+            f.id.toLowerCase().includes(q)
+        );
+    }
+    
+    // Group by category
+    const categoryOrder = ['Messages', 'Automation', 'Communication', 'Moderation', 'Fun', 'Text', 'Games'];
+    const categoryLabels = {
+        'messages': 'Messages',
+        'automation': 'Automation',
+        'communication': 'Communication',
+        'moderation': 'Moderation',
+        'fun': 'Fun',
+        'text': 'Text Tools',
+        'games': 'Games'
+    };
+    
+    const grouped = {};
+    features.forEach(f => {
+        const cat = f.category || 'other';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(f);
+    });
+    
+    let html = '';
+    for (const cat of Object.keys(categoryLabels)) {
+        const items = grouped[cat];
+        if (!items || items.length === 0) continue;
+        html += `
+            <div class="feature-category-section">
+                <h3 class="feature-category-label">${categoryLabels[cat]}</h3>
+                <div class="features-grid">
+                    ${items.map(f => renderFeatureCard(f)).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    if (!html) {
+        html = `<div class="empty-state-card"><p>No features found</p></div>`;
+    }
+    
+    container.innerHTML = html;
+}
+
+function renderFeatureCard(f) {
+    const statusClass = f.coming_soon ? 'coming-soon' : f.enabled ? 'active' : 'inactive';
+    const statusText = f.coming_soon ? 'Coming Soon' :
+                       f.enabled ? 'Active' :
+                       f.requires_telegram ? 'Needs Telegram' : 'Inactive';
+    const favClass = f.is_favorite ? 'is-favorite' : '';
+    
+    return `
+        <div class="feature-card ${statusClass} ${favClass}" onclick="openFeatureDetail('${f.id}')">
+            <div class="feature-card-top">
+                <div class="feature-card-icon">${f.icon}</div>
+                <button class="feature-fav-btn ${favClass}" onclick="event.stopPropagation(); toggleFeatureFavorite('${f.id}')" title="Favorite">
+                    <svg viewBox="0 0 20 20" fill="${f.is_favorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5"><path d="M10 3l2.1 4.3 4.7.7-3.4 3.3.8 4.7L10 13.8 5.8 16l.8-4.7L3.2 8l4.7-.7L10 3z"/></svg>
+                </button>
+            </div>
+            <h4 class="feature-card-name">${f.name}</h4>
+            <p class="feature-card-desc">${f.description}</p>
+            <div class="feature-card-footer">
+                <span class="feature-status-badge ${statusClass}">${statusText}</span>
+                ${!f.coming_soon ? `
+                    <label class="feature-toggle" onclick="event.stopPropagation();">
+                        <input type="checkbox" ${f.enabled ? 'checked' : ''} onchange="toggleFeatureEnabled('${f.id}', this.checked)">
+                        <span class="feature-toggle-slider"></span>
+                    </label>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+async function openFeatureDetail(featureId) {
+    state.currentFeatureId = featureId;
+    navigateTo('feature-detail');
+}
+
+async function loadFeatureDetail(featureId) {
+    if (!featureId) return;
+    try {
+        const data = await apiFetch(`/features/${featureId}`);
+        
+        const header = document.getElementById('featureDetailHeader');
+        header.innerHTML = `
+            <div class="feature-detail-icon">${data.icon}</div>
+            <div class="feature-detail-info">
+                <h2 class="feature-detail-name">${data.name}</h2>
+                <p class="feature-detail-desc">${data.description}</p>
+                <span class="feature-status-badge ${data.enabled ? 'active' : data.coming_soon ? 'coming-soon' : 'inactive'}">
+                    ${data.coming_soon ? 'Coming Soon' : data.enabled ? 'Active' : 'Inactive'}
+                </span>
+            </div>
+        `;
+        
+        const status = document.getElementById('featureDetailStatus');
+        if (!data.coming_soon) {
+            status.innerHTML = `
+                <div class="card" style="margin-top: 16px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                        <span style="color:var(--clin-text-secondary);">Feature Status</span>
+                        <label class="switch">
+                            <input type="checkbox" id="featureDetailToggle" ${data.enabled ? 'checked' : ''}
+                                   onchange="toggleFeatureEnabled('${featureId}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="feature-stats-row" style="margin-top: 12px;">
+                        <div class="feature-stat"><span class="feature-stat-value">${data.actions_count}</span><span class="feature-stat-label">Actions</span></div>
+                        <div class="feature-stat"><span class="feature-stat-value">${data.errors_count}</span><span class="feature-stat-label">Errors</span></div>
+                        <div class="feature-stat"><span class="feature-stat-value">${data.enabled_at ? new Date(data.enabled_at).toLocaleDateString() : '—'}</span><span class="feature-stat-label">Since</span></div>
+                    </div>
+                </div>
+            `;
+        } else {
+            status.innerHTML = `<div class="card" style="margin-top:16px;"><p style="color:var(--clin-text-muted);">This feature is coming soon.</p></div>`;
+        }
+        
+        // Settings section
+        const settingsEl = document.getElementById('featureDetailSettings');
+        if (data.has_settings && data.settings && Object.keys(data.settings).length > 0) {
+            let settingsHtml = '<div class="card" style="margin-top: 16px;"><h3 class="card-section-title">Settings</h3>';
+            for (const [key, val] of Object.entries(data.settings)) {
+                const label = key.replace(/_/g, ' ').replace(/\\b\\w/g, l => l.toUpperCase());
+                if (typeof val === 'boolean') {
+                    settingsHtml += `<div class="setting-row"><span>${label}</span><label class="switch"><input type="checkbox" ${val ? 'checked' : ''} data-setting-key="${key}"><span class="slider"></span></label></div>`;
+                } else if (typeof val === 'number') {
+                    settingsHtml += `<div class="setting-row"><span>${label}</span><input type="number" class="clin-input" value="${val}" data-setting-key="${key}" style="width:80px;"></div>`;
+                } else {
+                    settingsHtml += `<div class="setting-row"><span>${label}</span><input type="text" class="clin-input" value="${val || ''}" data-setting-key="${key}"></div>`;
+                }
+            }
+            settingsHtml += `<button class="btn btn-primary btn-sm" style="margin-top: 12px;" onclick="saveFeatureSettings('${featureId}')">Save Settings</button></div>`;
+            settingsEl.innerHTML = settingsHtml;
+        } else {
+            settingsEl.innerHTML = '';
+        }
+        
+        // Activity log
+        const actEl = document.getElementById('featureDetailActivity');
+        if (data.activity_log && data.activity_log.length > 0) {
+            actEl.innerHTML = `
+                <div class="card" style="margin-top: 16px;">
+                    <h3 class="card-section-title">Recent Activity</h3>
+                    ${data.activity_log.slice(0, 10).map(a => `
+                        <div class="activity-row">
+                            <span class="activity-action">${a.action}</span>
+                            <span class="activity-time">${new Date(a.created_at).toLocaleString()}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } else {
+            actEl.innerHTML = '';
+        }
+        
+    } catch (e) {
+        console.error('Failed to load feature detail:', e);
+        showToast('Failed to load feature details', 'error');
+    }
+}
+
+async function toggleFeatureEnabled(featureId, enabled) {
+    try {
+        const endpoint = enabled ? 'enable' : 'disable';
+        await apiFetch(`/features/${featureId}/${endpoint}`, { method: 'POST' });
+        showToast(`Feature ${enabled ? 'enabled' : 'disabled'}`, 'success');
+        
+        // Update cache
+        if (state.featuresCache) {
+            const f = state.featuresCache.features.find(x => x.id === featureId);
+            if (f) f.enabled = enabled;
+        }
+        
+        // Refresh current view
+        if (state.activeScreen === 'features') renderFeaturesGrid();
+        if (state.activeScreen === 'feature-detail') loadFeatureDetail(featureId);
+    } catch (e) {
+        showToast('Failed to toggle feature', 'error');
+    }
+}
+
+async function toggleFeatureFavorite(featureId) {
+    try {
+        const data = await apiFetch(`/features/favorites/${featureId}`, { method: 'POST' });
+        
+        if (state.featuresCache) {
+            const f = state.featuresCache.features.find(x => x.id === featureId);
+            if (f) f.is_favorite = data.is_favorite;
+            if (data.is_favorite) {
+                if (!state.featuresCache.favorites.includes(featureId)) {
+                    state.featuresCache.favorites.push(featureId);
+                }
+            } else {
+                state.featuresCache.favorites = state.featuresCache.favorites.filter(id => id !== featureId);
+            }
+            renderFeatureFavorites(state.featuresCache.features, state.featuresCache.favorites);
+            renderFeaturesGrid();
+        }
+    } catch (e) {
+        showToast('Failed to update favorite', 'error');
+    }
+}
+
+async function saveFeatureSettings(featureId) {
+    const inputs = document.querySelectorAll('#featureDetailSettings [data-setting-key]');
+    const settings = {};
+    inputs.forEach(inp => {
+        const key = inp.dataset.settingKey;
+        if (inp.type === 'checkbox') settings[key] = inp.checked;
+        else if (inp.type === 'number') settings[key] = Number(inp.value);
+        else settings[key] = inp.value;
+    });
+    
+    try {
+        await apiFetch(`/features/${featureId}/settings`, {
+            method: 'POST',
+            body: JSON.stringify({ settings })
+        });
+        showToast('Settings saved', 'success');
+    } catch (e) {
+        showToast('Failed to save settings', 'error');
+    }
+}
+
+async function stopAllAutomations() {
+    if (!confirm('Stop all automation features?')) return;
+    try {
+        const data = await apiFetch('/features/stop-all', { method: 'POST' });
+        showToast(`Stopped ${data.stopped_features.length} automation(s)`, 'success');
+        if (state.activeScreen === 'features') loadFeatures();
+    } catch (e) {
+        showToast('Failed to stop automations', 'error');
+    }
+}
+
+// ========================================================
 // CLIN 2.0 ADVANCED CONTROLLERS & PRODUCT CAPABILITIES
 // ========================================================
 
@@ -1679,6 +2000,8 @@ function initCommandPalette() {
     { title: "Системная диагностика", desc: "Проверить статус ядра CLIN и БД", action: () => openDiagnosticsModal(), shortcut: "DG" },
     { title: "Индекс гигиены", desc: "Посмотреть факторы и расчёт баллов", action: () => openHygieneBreakdownModal(), shortcut: "SC" },
     { title: "Экспорт архива", desc: "Выгрузить настройки и белый список в JSON", action: () => document.getElementById("btnExportFullBackup")?.click(), shortcut: "EX" },
+    { title: 'All Features', desc: 'Browse all features and utilities', action: () => navigateTo('features'), shortcut: 'F' },
+    { title: 'Stop All Automations', desc: 'Stop all automation features', action: stopAllAutomations, shortcut: 'X' },
   ];
 
   let selectedIndex = 0;

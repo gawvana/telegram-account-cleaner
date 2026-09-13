@@ -18,6 +18,7 @@ from webapp.schemas import (
     RuleSimulationRequest,
     RuleSimulationResponse,
     MatchedDialogPreview,
+    StorageRetentionRequest,
 )
 
 router = APIRouter(tags=["Settings, Whitelist & Backup"])
@@ -371,4 +372,45 @@ async def update_user_credentials(
         "success": True,
         "message": "Данные Telegram API успешно обновлены и зашифрованы.",
     }
+
+
+# ---------------- STORAGE ---------------- #
+
+@router.get("/storage")
+@router.get("/settings/storage")
+async def get_storage_usage(user_id: int = Depends(get_current_user_id)):
+    usage = await db.get_storage_usage(user_id)
+    deleted = await db.get_deleted_messages_stats(user_id)
+    edited = await db.get_edited_messages_stats(user_id)
+    return {
+        "usage": usage,
+        "deleted_messages_stats": deleted,
+        "edited_messages_stats": edited,
+    }
+
+
+@router.post("/storage/cleanup")
+@router.post("/settings/storage/cleanup")
+async def cleanup_storage(user_id: int = Depends(get_current_user_id)):
+    result = await db.cleanup_expired_archive(user_id)
+    await db.append_audit_log(user_id, action="ARCHIVE_CLEANED")
+    return {"success": True, "result": result}
+
+
+@router.post("/storage/retention")
+@router.post("/settings/storage/retention")
+async def update_storage_retention(
+    req: StorageRetentionRequest,
+    user_id: int = Depends(get_current_user_id),
+):
+    valid_retention_days = [7, 30, 90, 365]
+    if req.retention_days not in valid_retention_days:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Недопустимое значение дней хранения. Разрешены: {valid_retention_days}",
+        )
+    
+    await db.update_storage_usage(user_id, retention_days=req.retention_days)
+    return {"success": True, "retention_days": req.retention_days}
+
 

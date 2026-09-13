@@ -24,6 +24,7 @@ from webapp.api.login import router as login_router
 from webapp.api.scan import router as scan_router
 from webapp.api.settings import router as settings_router
 from webapp.api.support import router as support_router
+from webapp.api.features import router as features_router
 from utils.logger import logger
 
 # Initialize Dispatcher for processing webhook updates
@@ -126,6 +127,34 @@ app.include_router(settings_router, prefix="/api")
 app.include_router(consent_router, prefix="/api")
 app.include_router(support_router, prefix="/api")
 app.include_router(diagnostics_router, prefix="/api")
+app.include_router(features_router)
+
+# Feature Routers
+try:
+    from features.deleted_messages.router import router as dm_router
+    app.include_router(dm_router)
+except ImportError:
+    pass
+try:
+    from features.edited_messages.router import router as em_router
+    app.include_router(em_router)
+except ImportError:
+    pass
+try:
+    from features.auto_responder.router import router as ar_router
+    app.include_router(ar_router)
+except ImportError:
+    pass
+try:
+    from features.translator.router import router as tr_router
+    app.include_router(tr_router)
+except ImportError:
+    pass
+try:
+    from features.mute.router import router as mute_router
+    app.include_router(mute_router)
+except ImportError:
+    pass
 
 # Static files for Mini App
 public_path = Path(__file__).parent / "public"

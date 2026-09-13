@@ -160,3 +160,7 @@ class RuleSimulationResponse(BaseModel):
     matched_count: int
     matched_dialogs: List[MatchedDialogPreview]
 
+
+class StorageRetentionRequest(BaseModel):
+    retention_days: int = Field(..., description="Days to retain storage data")
+

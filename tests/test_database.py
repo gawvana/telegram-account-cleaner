@@ -38,9 +38,9 @@ async def test_database_initialization_and_migrations(tmp_path):
         # Verify migrations recorded
         cur_mig = await conn.execute("SELECT version, name FROM schema_migrations ORDER BY version ASC")
         migrations = await cur_mig.fetchall()
-        assert len(migrations) == 6
+        assert len(migrations) == 7
         assert migrations[0]["version"] == 1
-        assert migrations[-1]["version"] == 6
+        assert migrations[-1]["version"] == 7
 
 
 @pytest.mark.asyncio
