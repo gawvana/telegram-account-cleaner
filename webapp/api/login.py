@@ -10,11 +10,19 @@ router = APIRouter(prefix="/login", tags=["Secure Login"])
 
 @router.get("/status")
 async def get_auth_status(user_id: int = Depends(get_current_user_id)):
-    """Checks whether the user currently has an active, authenticated session."""
-    has_session = await client_manager.has_active_session(user_id)
-    return {"user_id": user_id, "is_authorized": has_session}
+    """Checks whether the user currently has an active, authenticated session or pending flow."""
+    auth_state = await auth_manager.get_auth_state(user_id)
+    return {
+        "user_id": user_id,
+        "is_authorized": auth_state.is_authorized,
+        "status": auth_state.status.value,
+        "step": auth_state.step,
+        "phone": auth_state.phone,
+        "expires_at": auth_state.expires_at,
+    }
 
 
+@router.post("/send-code")
 @router.post("/request-code")
 async def request_code(req: LoginCodeRequest, user_id: int = Depends(get_current_user_id)):
     """Step 1: Mini App requests SMS/Telegram code securely."""
@@ -27,7 +35,9 @@ async def request_code(req: LoginCodeRequest, user_id: int = Depends(get_current
         )
         return {
             "success": True,
+            "status": auth_state.status.value,
             "step": auth_state.step,
+            "expires_at": auth_state.expires_at,
             "message": "Код подтверждения отправлен в ваш Telegram.",
         }
     except Exception as e:
@@ -35,6 +45,7 @@ async def request_code(req: LoginCodeRequest, user_id: int = Depends(get_current
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+@router.post("/verify-code")
 @router.post("/submit-code")
 async def submit_code(req: LoginCodeSubmit, user_id: int = Depends(get_current_user_id)):
     """Step 2: Mini App submits authentication code."""
@@ -42,6 +53,7 @@ async def submit_code(req: LoginCodeSubmit, user_id: int = Depends(get_current_u
         auth_state, session_file = await auth_manager.submit_auth_code(user_id, req.code)
         return {
             "success": True,
+            "status": auth_state.status.value,
             "step": auth_state.step,
             "is_authorized": auth_state.is_authorized,
             "message": "Аккаунт успешно подключён!" if auth_state.is_authorized else "Требуется 2FA пароль.",
@@ -51,6 +63,7 @@ async def submit_code(req: LoginCodeSubmit, user_id: int = Depends(get_current_u
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+@router.post("/verify-2fa")
 @router.post("/submit-2fa")
 async def submit_2fa(req: Login2FASubmit, user_id: int = Depends(get_current_user_id)):
     """Step 3: Mini App submits 2FA cloud password."""
@@ -58,6 +71,7 @@ async def submit_2fa(req: Login2FASubmit, user_id: int = Depends(get_current_use
         auth_state, session_file = await auth_manager.submit_2fa_password(user_id, req.password)
         return {
             "success": True,
+            "status": auth_state.status.value,
             "step": auth_state.step,
             "is_authorized": auth_state.is_authorized,
             "message": "Аккаунт успешно подключён!",
@@ -65,6 +79,13 @@ async def submit_2fa(req: Login2FASubmit, user_id: int = Depends(get_current_use
     except Exception as e:
         logger.error(f"Error in submit-2fa: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/cancel")
+async def cancel_login(user_id: int = Depends(get_current_user_id)):
+    """Cancels any pending login attempt and frees resources."""
+    await auth_manager.cancel_auth(user_id)
+    return {"success": True, "message": "Авторизация отменена."}
 
 
 @router.post("/logout")

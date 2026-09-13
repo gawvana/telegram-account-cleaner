@@ -134,6 +134,8 @@ class CleanupService:
             skipped = progress.skipped
             errors = progress.errors
             success = max(processed - skipped - errors, 0)
+            if status == "COMPLETED" and errors > 0:
+                status = "COMPLETED_WITH_WARNINGS"
             finished_dt = datetime.datetime.now(datetime.timezone.utc)
 
             async with db.get_connection() as conn:

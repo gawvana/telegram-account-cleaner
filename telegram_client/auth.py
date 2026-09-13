@@ -15,42 +15,143 @@ from telethon.sessions import StringSession
 
 from config import settings
 from database import db
+from domain.models import AuthState, AuthStatus
 from services.crypto_service import crypto_service
 from telegram_client.exceptions import AuthRequiredException, FloodWaitTimeoutException
-from telegram_client.models import AuthState
 from utils.logger import logger
 
 
 class PendingAuthSession:
     """Holds in-memory transient Telethon client during the authentication handshake."""
 
-    def __init__(self, telegram_id: int, client: TelegramClient, phone: str, phone_code_hash: str):
+    def __init__(
+        self,
+        telegram_id: int,
+        client: TelegramClient,
+        phone: str,
+        phone_code_hash: str,
+    ):
         self.telegram_id = telegram_id
         self.client = client
         self.phone = phone
         self.phone_code_hash = phone_code_hash
+        self.status = AuthStatus.WAITING_FOR_CODE
         self.created_at = time.time()
+        self.timeout_seconds = settings.AUTH_TIMEOUT_SECONDS
 
     @property
     def is_expired(self) -> bool:
-        # 10 minutes timeout for login flow
-        return time.time() - self.created_at > 600
+        return (time.time() - self.created_at) > self.timeout_seconds
+
+    @property
+    def expires_at(self) -> float:
+        return self.created_at + self.timeout_seconds
 
 
 class AuthManager:
-    """Manages the secure Telethon login process (chat-based or Mini App)."""
+    """
+    Manages the secure Telethon login process with explicit state machine,
+    strict per-user concurrency locks, and automatic transient session cleanup.
+    """
 
     def __init__(self):
         self._pending_sessions: Dict[int, PendingAuthSession] = {}
-        self._lock = asyncio.Lock()
+        self._user_locks: Dict[int, asyncio.Lock] = {}
+        self._global_lock = asyncio.Lock()
+
+    async def _get_user_lock(self, telegram_id: int) -> asyncio.Lock:
+        async with self._global_lock:
+            if telegram_id not in self._user_locks:
+                self._user_locks[telegram_id] = asyncio.Lock()
+            return self._user_locks[telegram_id]
 
     async def cleanup_expired(self) -> None:
-        async with self._lock:
+        """Closes and purges transient clients exceeding AUTH_TIMEOUT_SECONDS."""
+        async with self._global_lock:
             expired_ids = [uid for uid, s in self._pending_sessions.items() if s.is_expired]
             for uid in expired_ids:
                 pending = self._pending_sessions.pop(uid, None)
-                if pending and pending.client.is_connected():
+                if pending and pending.client and pending.client.is_connected():
+                    try:
+                        await pending.client.disconnect()
+                    except Exception:
+                        pass
+                logger.info(f"Purged expired transient auth session for user {uid}")
+
+    async def get_auth_state(self, telegram_id: int) -> AuthState:
+        """Determines the current precise AuthStatus for the user."""
+        await self.cleanup_expired()
+
+        async with self._global_lock:
+            pending = self._pending_sessions.get(telegram_id)
+
+        if pending:
+            if pending.status == AuthStatus.WAITING_FOR_CODE:
+                return AuthState(
+                    status=AuthStatus.WAITING_FOR_CODE,
+                    is_authorized=False,
+                    phone=pending.phone,
+                    phone_code_hash=pending.phone_code_hash,
+                    step="CODE",
+                    expires_at=pending.expires_at,
+                )
+            elif pending.status == AuthStatus.WAITING_FOR_2FA:
+                return AuthState(
+                    status=AuthStatus.WAITING_FOR_2FA,
+                    is_authorized=False,
+                    phone=pending.phone,
+                    phone_code_hash=pending.phone_code_hash,
+                    step="2FA",
+                    expires_at=pending.expires_at,
+                )
+            elif pending.status == AuthStatus.AUTHENTICATING:
+                return AuthState(
+                    status=AuthStatus.AUTHENTICATING,
+                    is_authorized=False,
+                    phone=pending.phone,
+                    step="AUTHENTICATING",
+                )
+
+        # Check DB for active session
+        async with db.get_connection() as conn:
+            cursor = await conn.execute(
+                "SELECT session_path, is_active FROM sessions WHERE telegram_id = ?",
+                (telegram_id,),
+            )
+            row = await cursor.fetchone()
+            if row and row["is_active"]:
+                p = Path(row["session_path"])
+                if p.exists() and p.stat().st_size > 0:
+                    u_cursor = await conn.execute(
+                        "SELECT phone FROM users WHERE telegram_id = ?", (telegram_id,)
+                    )
+                    u_row = await u_cursor.fetchone()
+                    phone = u_row["phone"] if u_row else None
+                    return AuthState(
+                        status=AuthStatus.CONNECTED,
+                        is_authorized=True,
+                        phone=phone,
+                        step="AUTHORIZED",
+                    )
+
+        return AuthState(
+            status=AuthStatus.DISCONNECTED,
+            is_authorized=False,
+            step="PHONE",
+        )
+
+    async def cancel_auth(self, telegram_id: int) -> None:
+        """Explicitly cancels pending authentication and frees client resources."""
+        lock = await self._get_user_lock(telegram_id)
+        async with lock:
+            async with self._global_lock:
+                pending = self._pending_sessions.pop(telegram_id, None)
+            if pending and pending.client and pending.client.is_connected():
+                try:
                     await pending.client.disconnect()
+                except Exception:
+                    pass
+            logger.info(f"User {telegram_id} cancelled auth handshake.")
 
     async def request_phone_code(
         self,
@@ -59,120 +160,173 @@ class AuthManager:
         api_id: Optional[int] = None,
         api_hash: Optional[str] = None,
     ) -> AuthState:
-        """Step 1: Connects Telethon client and requests SMS/Telegram auth code."""
-        await self.cleanup_expired()
-        clean_phone = "".join(filter(lambda c: c.isdigit() or c == "+", phone))
+        """
+        Step 1: Connects Telethon client and requests verification code from Telegram.
+        Backend uses server-configured API_ID and API_HASH by default — never forces user to enter credentials.
+        """
+        lock = await self._get_user_lock(telegram_id)
+        if lock.locked():
+            raise AuthRequiredException("Процесс авторизации уже выполняется. Пожалуйста, подождите.")
 
-        eff_api_id = api_id if api_id and api_id != 0 else settings.effective_api_id
-        eff_api_hash = api_hash if api_hash and len(api_hash) > 5 else settings.effective_api_hash
+        async with lock:
+            await self.cleanup_expired()
 
-        # Create transient client in memory
-        client = TelegramClient(StringSession(), eff_api_id, eff_api_hash)
-        await client.connect()
+            clean_phone = "".join(filter(lambda c: c.isdigit() or c == "+", phone))
+            if len(clean_phone) < 7:
+                raise AuthRequiredException("Некорректный формат номера телефона.")
 
-        try:
-            sent_code = await client.send_code_request(clean_phone)
-            async with self._lock:
-                # Disconnect old pending if any
-                old = self._pending_sessions.pop(telegram_id, None)
-                if old and old.client.is_connected():
-                    await old.client.disconnect()
+            # Create transient in-memory client
+            effective_api_id = api_id or settings.effective_api_id
+            effective_api_hash = api_hash or settings.effective_api_hash
+            client = TelegramClient(
+                StringSession(),
+                effective_api_id,
+                effective_api_hash,
+            )
 
-                self._pending_sessions[telegram_id] = PendingAuthSession(
-                    telegram_id=telegram_id,
-                    client=client,
+            try:
+                await client.connect()
+                sent_code = await client.send_code_request(clean_phone)
+
+                async with self._global_lock:
+                    old = self._pending_sessions.pop(telegram_id, None)
+                    if old and old.client and old.client.is_connected():
+                        await old.client.disconnect()
+
+                    pending = PendingAuthSession(
+                        telegram_id=telegram_id,
+                        client=client,
+                        phone=clean_phone,
+                        phone_code_hash=sent_code.phone_code_hash,
+                    )
+                    self._pending_sessions[telegram_id] = pending
+
+                logger.info(f"Auth code requested successfully for user {telegram_id}")
+                return AuthState(
+                    status=AuthStatus.WAITING_FOR_CODE,
+                    is_authorized=False,
                     phone=clean_phone,
                     phone_code_hash=sent_code.phone_code_hash,
+                    step="CODE",
+                    expires_at=pending.expires_at,
                 )
 
-            logger.info(f"Auth code requested successfully for user {telegram_id}")
-            return AuthState(
-                is_authorized=False,
-                phone=clean_phone,
-                phone_code_hash=sent_code.phone_code_hash,
-                step="CODE",
-            )
-        except PhoneNumberInvalidError:
-            await client.disconnect()
-            raise AuthRequiredException("Номер телефона указан неверно.")
-        except FloodWaitError as e:
-            await client.disconnect()
-            raise FloodWaitTimeoutException(e.seconds)
-        except Exception as e:
-            await client.disconnect()
-            logger.error(f"Error requesting code for {telegram_id}: {str(e)}")
-            raise AuthRequiredException(f"Ошибка при отправке запроса кода: {str(e)}")
+            except PhoneNumberInvalidError:
+                if client.is_connected():
+                    await client.disconnect()
+                raise AuthRequiredException("Номер телефона указан неверно.")
+            except FloodWaitError as e:
+                if client.is_connected():
+                    await client.disconnect()
+                raise FloodWaitTimeoutException(e.seconds)
+            except Exception as e:
+                if client.is_connected():
+                    await client.disconnect()
+                logger.error(f"Error requesting code for {telegram_id}: {str(e)}")
+                raise AuthRequiredException(f"Ошибка запроса кода: {str(e)}")
 
-    async def submit_auth_code(self, telegram_id: int, code: str) -> Tuple[AuthState, Optional[str]]:
-        """Step 2: Submits SMS/Telegram code; returns AuthState and optional encrypted session."""
-        async with self._lock:
-            pending = self._pending_sessions.get(telegram_id)
+    async def submit_auth_code(
+        self, telegram_id: int, code: str
+    ) -> Tuple[AuthState, Optional[str]]:
+        """Step 2: Submits code; returns AuthState and optional encrypted session file path."""
+        lock = await self._get_user_lock(telegram_id)
+        async with lock:
+            async with self._global_lock:
+                pending = self._pending_sessions.get(telegram_id)
 
-        if not pending or pending.is_expired:
-            raise AuthRequiredException("Сессия авторизации истекла. Запросите код заново.")
+            if not pending:
+                raise AuthRequiredException("Сессия авторизации не найдена. Начните сначала.")
 
-        clean_code = code.strip().replace(" ", "")
+            if pending.is_expired:
+                await self.cancel_auth(telegram_id)
+                raise AuthRequiredException("Время ожидания кода истекло (5 минут). Запросите код заново.")
 
-        try:
-            await pending.client.sign_in(
-                phone=pending.phone,
-                code=clean_code,
-                phone_code_hash=pending.phone_code_hash,
-            )
-            # If successful, complete session creation
-            return await self._finalize_login(telegram_id, pending)
+            clean_code = code.strip().replace(" ", "")
+            if not clean_code:
+                raise AuthRequiredException("Введите код подтверждения.")
 
-        except SessionPasswordNeededError:
-            # 2FA password required
-            logger.info(f"User {telegram_id} requires 2FA password")
-            return (
-                AuthState(
-                    is_authorized=False,
+            pending.status = AuthStatus.AUTHENTICATING
+
+            try:
+                await pending.client.sign_in(
                     phone=pending.phone,
+                    code=clean_code,
                     phone_code_hash=pending.phone_code_hash,
-                    step="2FA",
-                ),
-                None,
-            )
-        except PhoneCodeInvalidError:
-            raise AuthRequiredException("Неверный код подтверждения.")
-        except PhoneCodeExpiredError:
-            raise AuthRequiredException("Срок действия кода истёк. Запросите код заново.")
-        except FloodWaitError as e:
-            raise FloodWaitTimeoutException(e.seconds)
+                )
+                return await self._finalize_login(telegram_id, pending)
 
-    async def submit_2fa_password(self, telegram_id: int, password: str) -> Tuple[AuthState, Optional[str]]:
-        """Step 3: Submits 2FA cloud password if enabled."""
-        async with self._lock:
-            pending = self._pending_sessions.get(telegram_id)
+            except SessionPasswordNeededError:
+                logger.info(f"User {telegram_id} requires 2FA password")
+                pending.status = AuthStatus.WAITING_FOR_2FA
+                return (
+                    AuthState(
+                        status=AuthStatus.WAITING_FOR_2FA,
+                        is_authorized=False,
+                        phone=pending.phone,
+                        phone_code_hash=pending.phone_code_hash,
+                        step="2FA",
+                        expires_at=pending.expires_at,
+                    ),
+                    None,
+                )
+            except PhoneCodeInvalidError:
+                pending.status = AuthStatus.WAITING_FOR_CODE
+                raise AuthRequiredException("Неверный код подтверждения.")
+            except PhoneCodeExpiredError:
+                await self.cancel_auth(telegram_id)
+                raise AuthRequiredException("Срок действия кода истёк. Запросите код заново.")
+            except FloodWaitError as e:
+                raise FloodWaitTimeoutException(e.seconds)
+            except Exception as e:
+                logger.error(f"Error verifying code for {telegram_id}: {e}")
+                raise AuthRequiredException(f"Ошибка проверки кода: {str(e)}")
 
-        if not pending or pending.is_expired:
-            raise AuthRequiredException("Сессия авторизации истекла. Пожалуйста, начните заново.")
+    async def submit_2fa_password(
+        self, telegram_id: int, password: str
+    ) -> Tuple[AuthState, Optional[str]]:
+        """Step 3: Submits 2FA cloud password if required."""
+        lock = await self._get_user_lock(telegram_id)
+        async with lock:
+            async with self._global_lock:
+                pending = self._pending_sessions.get(telegram_id)
 
-        try:
-            await pending.client.sign_in(password=password)
-            return await self._finalize_login(telegram_id, pending)
-        except PasswordHashInvalidError:
-            raise AuthRequiredException("Неверный 2FA пароль.")
-        except FloodWaitError as e:
-            raise FloodWaitTimeoutException(e.seconds)
+            if not pending:
+                raise AuthRequiredException("Сессия авторизации не найдена. Начните сначала.")
+
+            if pending.is_expired:
+                await self.cancel_auth(telegram_id)
+                raise AuthRequiredException("Время ожидания истекло. Начните заново.")
+
+            if pending.status != AuthStatus.WAITING_FOR_2FA:
+                raise AuthRequiredException("2FA пароль сейчас не требуется.")
+
+            pending.status = AuthStatus.AUTHENTICATING
+
+            try:
+                await pending.client.sign_in(password=password)
+                return await self._finalize_login(telegram_id, pending)
+            except PasswordHashInvalidError:
+                pending.status = AuthStatus.WAITING_FOR_2FA
+                raise AuthRequiredException("Неверный 2FA пароль.")
+            except FloodWaitError as e:
+                raise FloodWaitTimeoutException(e.seconds)
+            except Exception as e:
+                logger.error(f"Error checking 2FA password for {telegram_id}: {e}")
+                raise AuthRequiredException(f"Ошибка проверки пароля: {str(e)}")
 
     async def _finalize_login(
         self, telegram_id: int, pending: PendingAuthSession
     ) -> Tuple[AuthState, str]:
-        """Saves encrypted session file to disk and registers in DB."""
-        # Telethon StringSession exported
+        """Saves encrypted session to sessions/users/<user_id>/session.enc and registers in DB."""
         session_str = pending.client.session.save()
 
-        # Retrieve user salt from DB
+        # Generate per-user salt and encrypt
         salt = crypto_service.generate_salt()
         user = await db.get_or_create_user(telegram_id, salt=salt)
         user_salt = user.get("salt") or salt
-
-        # Encrypt the session string
         encrypted_session = crypto_service.encrypt_string(session_str, user_salt)
 
-        # Write to secure user directory
+        # Write to isolated per-user directory
         user_session_dir = Path(settings.SESSION_DIR) / "users" / str(telegram_id)
         user_session_dir.mkdir(parents=True, exist_ok=True)
         session_file = user_session_dir / "session.enc"
@@ -185,7 +339,6 @@ class AuthManager:
         else:
             masked_phone = "***"
 
-        # Update database
         async with db.get_connection() as conn:
             await conn.execute(
                 """
@@ -204,19 +357,19 @@ class AuthManager:
             )
             await conn.commit()
 
-        # Audit log
         await db.append_audit_log(telegram_id, action="ACCOUNT_AUTHORIZED")
 
-        # Disconnect transient client
-        if pending.client.is_connected():
+        # Safely disconnect transient client
+        if pending.client and pending.client.is_connected():
             await pending.client.disconnect()
 
-        async with self._lock:
+        async with self._global_lock:
             self._pending_sessions.pop(telegram_id, None)
 
         logger.info(f"User {telegram_id} successfully authenticated and session encrypted.")
         return (
             AuthState(
+                status=AuthStatus.CONNECTED,
                 is_authorized=True,
                 phone=masked_phone,
                 step="AUTHORIZED",

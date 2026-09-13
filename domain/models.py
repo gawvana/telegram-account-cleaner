@@ -136,12 +136,26 @@ class CleanupItemResult(BaseModel):
     processed_at: datetime.datetime = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 
+class AuthStatus(str, Enum):
+    DISCONNECTED = "DISCONNECTED"
+    CONNECTING = "CONNECTING"
+    WAITING_FOR_CODE = "WAITING_FOR_CODE"
+    WAITING_FOR_2FA = "WAITING_FOR_2FA"
+    AUTHENTICATING = "AUTHENTICATING"
+    CONNECTED = "CONNECTED"
+    RECONNECTING = "RECONNECTING"
+    SESSION_EXPIRED = "SESSION_EXPIRED"
+    ERROR = "ERROR"
+
+
 class AuthState(BaseModel):
+    status: AuthStatus = AuthStatus.DISCONNECTED
     is_authorized: bool = False
     phone: Optional[str] = None
     phone_code_hash: Optional[str] = None
-    step: str = "PHONE"  # "PHONE", "CODE", "2FA", "AUTHORIZED"
+    step: str = "PHONE"  # Backwards compatibility: "PHONE", "CODE", "2FA", "AUTHORIZED"
     error_message: Optional[str] = None
+    expires_at: Optional[float] = None
 
 
 class TicketDTO(BaseModel):
