@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -66,8 +66,15 @@ if static_path.exists():
 
 @app.get("/health")
 @app.get("/api/health")
-async def health_check():
-    return {"status": "ok", "version": "2.0.0"}
+@app.get("/api/index.py")
+async def health_check(request: Request = None):
+    headers = dict(request.headers) if request else {}
+    return {
+        "status": "ok",
+        "version": "2.0.0",
+        "path": request.url.path if request else None,
+        "headers": headers,
+    }
 
 
 if __name__ == "__main__":
