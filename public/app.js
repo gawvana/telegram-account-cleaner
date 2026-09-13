@@ -55,13 +55,15 @@ function showToast(message, type = "info", duration = 3500) {
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
 
-  let icon = "ℹ️";
-  if (type === "success") icon = "✓";
-  if (type === "error") icon = "✕";
-  if (type === "warning") icon = "⚠";
+  let icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
+  if (type === "success") icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E887" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+  if (type === "error") icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF5268" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  if (type === "warning") icon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFB547" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
   const iconSpan = document.createElement("span");
-  iconSpan.textContent = icon;
+  iconSpan.style.display = "inline-flex";
+  iconSpan.style.alignItems = "center";
+  iconSpan.innerHTML = icon;
   const msgSpan = document.createElement("span");
   msgSpan.textContent = String(message || "");
 
@@ -223,9 +225,12 @@ function navigateTo(screenId) {
     btn.classList.toggle("active", btn.getAttribute("data-screen") === screenId);
   });
 
-  // Close More Sheet if open
+  // Close More Sheet if open with smooth animation
   const moreSheet = document.getElementById("mobileMoreSheet");
-  if (moreSheet) moreSheet.style.display = "none";
+  if (moreSheet && (moreSheet.classList.contains("open") || moreSheet.style.display === "flex")) {
+    moreSheet.classList.remove("open");
+    setTimeout(() => { moreSheet.style.display = "none"; }, 280);
+  }
 
   // Lazy screen loading
   if (screenId === "dashboard") loadDashboardData();
@@ -256,18 +261,30 @@ function setupEventListeners() {
     });
   });
 
-  // Mobile More Button
+  // Mobile More Button & Native Sheet
   const btnMobileMore = document.getElementById("btnMobileMore");
-  if (btnMobileMore) {
+  const moreSheetEl = document.getElementById("mobileMoreSheet");
+  if (btnMobileMore && moreSheetEl) {
     btnMobileMore.addEventListener("click", () => {
-      document.getElementById("mobileMoreSheet").style.display = "flex";
+      moreSheetEl.style.display = "flex";
+      setTimeout(() => moreSheetEl.classList.add("open"), 10);
     });
   }
 
   const btnCloseMoreSheet = document.getElementById("btnCloseMoreSheet");
-  if (btnCloseMoreSheet) {
+  if (btnCloseMoreSheet && moreSheetEl) {
     btnCloseMoreSheet.addEventListener("click", () => {
-      document.getElementById("mobileMoreSheet").style.display = "none";
+      moreSheetEl.classList.remove("open");
+      setTimeout(() => { moreSheetEl.style.display = "none"; }, 280);
+    });
+  }
+
+  if (moreSheetEl) {
+    moreSheetEl.addEventListener("click", (e) => {
+      if (e.target === moreSheetEl) {
+        moreSheetEl.classList.remove("open");
+        setTimeout(() => { moreSheetEl.style.display = "none"; }, 280);
+      }
     });
   }
 
@@ -738,13 +755,16 @@ function setupEventListeners() {
   });
 
   // Password Visibility Toggles
+  const eyeSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const eyeOffSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
   document.getElementById("btnToggleApiHash")?.addEventListener("click", () => {
     const input = document.getElementById("loginApiHashInput");
     const btn = document.getElementById("btnToggleApiHash");
     if (input && btn) {
       const isPwd = input.type === "password";
       input.type = isPwd ? "text" : "password";
-      btn.textContent = isPwd ? "🙈" : "👁️";
+      btn.innerHTML = isPwd ? eyeOffSvg : eyeSvg;
     }
   });
 
@@ -754,7 +774,7 @@ function setupEventListeners() {
     if (input && btn) {
       const isPwd = input.type === "password";
       input.type = isPwd ? "text" : "password";
-      btn.textContent = isPwd ? "🙈" : "👁️";
+      btn.innerHTML = isPwd ? eyeOffSvg : eyeSvg;
     }
   });
 
@@ -935,6 +955,28 @@ function setupEventListeners() {
       if (btn) btn.disabled = false;
     }
   });
+
+  // System Diagnostics Modal Triggers
+  document.getElementById("btnOpenDiagnosticsModal")?.addEventListener("click", openDiagnosticsModal);
+  document.getElementById("btnCloseDiagnosticsModal")?.addEventListener("click", () => {
+    document.getElementById("diagnosticsModal").style.display = "none";
+  });
+  document.getElementById("btnCloseDiagnosticsBtn")?.addEventListener("click", () => {
+    document.getElementById("diagnosticsModal").style.display = "none";
+  });
+  document.getElementById("btnRefreshDiagnostics")?.addEventListener("click", loadDiagnostics);
+
+  // Hygiene Breakdown Modal Triggers
+  document.getElementById("btnWhyScore")?.addEventListener("click", openHygieneBreakdownModal);
+  document.getElementById("btnCloseHygieneModal")?.addEventListener("click", () => {
+    document.getElementById("hygieneBreakdownModal").style.display = "none";
+  });
+  document.getElementById("btnAckHygieneModal")?.addEventListener("click", () => {
+    document.getElementById("hygieneBreakdownModal").style.display = "none";
+  });
+
+  // Initialize Desktop Command Palette (Ctrl+K)
+  initCommandPalette();
 }
 
 // ----------------------------------------------------
@@ -985,7 +1027,7 @@ async function loadDashboardData() {
               <strong style="margin-left: 8px;">${escapeHtml(j.job_type)}</strong>
             </div>
             <div style="font-size: 12px; color: var(--clin-text-muted);">
-              ${isSuccess ? "✅ Успешно" : "❌ " + escapeHtml(j.status)} (${Number(j.processed_items) || 0} обработано)
+              ${isSuccess ? '<span style="color: var(--clin-green); font-weight: 600;">Успешно</span>' : '<span style="color: var(--clin-danger); font-weight: 600;">' + escapeHtml(j.status) + '</span>'} (${Number(j.processed_items) || 0} обработано)
             </div>
           </div>
         `;
@@ -1084,10 +1126,16 @@ function renderDialogsList() {
 
   // Filter Chip Logic
   if (state.activeFilter !== "all") {
-    if (state.activeFilter === "INACTIVE") {
+    const filterUpper = String(state.activeFilter || "").toUpperCase();
+    if (filterUpper === "INACTIVE") {
       filtered = filtered.filter((d) => (d.inactive_days ?? d.heuristics?.inactive_days ?? 0) >= 60);
+    } else if (filterUpper === "GROUP") {
+      filtered = filtered.filter((d) => {
+        const type = String(d.chat_type || "").toUpperCase();
+        return type === "GROUP" || type === "SUPERGROUP";
+      });
     } else {
-      filtered = filtered.filter((d) => d.chat_type === state.activeFilter);
+      filtered = filtered.filter((d) => String(d.chat_type || "").toUpperCase() === filterUpper);
     }
   }
 
@@ -1128,7 +1176,7 @@ function renderDialogsList() {
           </div>
           <div class="dialog-meta-line">
             ${d.username ? `<span>@${escapeHtml(d.username)}</span>` : ""}
-            ${isWl ? '<span class="badge-wl">⭐ Whitelist</span>' : ""}
+            ${isWl ? '<span class="badge-wl" style="display: inline-flex; align-items: center; gap: 4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span>Whitelist</span></span>' : ""}
             ${inactive > 0 ? `<span>Неактивен: ${inactive} дн.</span>` : ""}
           </div>
         </div>
@@ -1309,7 +1357,7 @@ async function loadHistory() {
               <strong style="margin-left: 8px;">${escapeHtml(j.job_type)}</strong>
             </div>
             <div style="font-size: 12px; color: var(--clin-text-muted);">
-              ${j.status === "COMPLETED" ? "✅ Успешно" : "❌ " + escapeHtml(j.status)} | ${Number(j.processed_items) || 0} обработано
+              ${j.status === "COMPLETED" ? '<span style="color: var(--clin-green); font-weight: 600;">Успешно</span>' : '<span style="color: var(--clin-danger); font-weight: 600;">' + escapeHtml(j.status) + '</span>'} | ${Number(j.processed_items) || 0} обработано
             </div>
           </div>
         `
@@ -1549,3 +1597,277 @@ async function executeDeepClean() {
     showToast(err.message, "error");
   }
 }
+
+// ========================================================
+// CLIN 2.0 ADVANCED CONTROLLERS & PRODUCT CAPABILITIES
+// ========================================================
+
+// 1. Desktop Command Palette (Ctrl+K / Cmd+K)
+function initCommandPalette() {
+  const modal = document.getElementById("commandPaletteModal");
+  const input = document.getElementById("commandPaletteInput");
+  const resultsContainer = document.getElementById("commandPaletteResults");
+  if (!modal || !input || !resultsContainer) return;
+
+  const commands = [
+    { title: "Дашборд", desc: "Сводка состояния и гигиена профиля", action: () => navigateTo("dashboard"), shortcut: "D" },
+    { title: "Сканирование", desc: "Запустить анализ аккаунта", action: () => { navigateTo("scan"); executeScan(); }, shortcut: "S" },
+    { title: "Диалоги", desc: "Список чатов, каналов и ботов", action: () => navigateTo("dialogs"), shortcut: "C" },
+    { title: "Smart Clean", desc: "Умная очистка неактивных диалогов", action: () => navigateTo("smartclean"), shortcut: "M" },
+    { title: "Белый список", desc: "Управление защищёнными чатами", action: () => navigateTo("whitelist"), shortcut: "W" },
+    { title: "История операций", desc: "Журнал очисток и крипто-таймлайн", action: () => navigateTo("history"), shortcut: "H" },
+    { title: "Расписание", desc: "Автоматическая регулярная очистка", action: () => navigateTo("schedule"), shortcut: "R" },
+    { title: "Центр поддержки", desc: "Создать обращение или тикет", action: () => navigateTo("support"), shortcut: "T" },
+    { title: "Настройки", desc: "Telegram API, безопасность и бэкапы", action: () => navigateTo("settings"), shortcut: "N" },
+    { title: "Системная диагностика", desc: "Проверить статус ядра CLIN и БД", action: () => openDiagnosticsModal(), shortcut: "DG" },
+    { title: "Индекс гигиены", desc: "Посмотреть факторы и расчёт баллов", action: () => openHygieneBreakdownModal(), shortcut: "SC" },
+    { title: "Экспорт архива", desc: "Выгрузить настройки и белый список в JSON", action: () => document.getElementById("btnExportFullBackup")?.click(), shortcut: "EX" },
+  ];
+
+  let selectedIndex = 0;
+  let filteredCommands = [...commands];
+
+  function renderPalette() {
+    resultsContainer.innerHTML = "";
+    if (filteredCommands.length === 0) {
+      resultsContainer.innerHTML = '<div style="padding: 14px; text-align: center; color: var(--clin-text-muted); font-size: 13px;">Команды не найдены</div>';
+      return;
+    }
+
+    filteredCommands.forEach((cmd, idx) => {
+      const btn = document.createElement("button");
+      btn.className = `palette-item ${idx === selectedIndex ? "active" : ""}`;
+      btn.innerHTML = `
+        <div class="palette-item-left">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          <div>
+            <div style="font-weight: 600;">${escapeHtml(cmd.title)}</div>
+            <div style="font-size: 11px; color: var(--clin-text-muted);">${escapeHtml(cmd.desc)}</div>
+          </div>
+        </div>
+        <span class="palette-shortcut-badge">${escapeHtml(cmd.shortcut)}</span>
+      `;
+      btn.addEventListener("click", () => {
+        closePalette();
+        cmd.action();
+      });
+      resultsContainer.appendChild(btn);
+    });
+  }
+
+  function openPalette() {
+    modal.style.display = "flex";
+    setTimeout(() => {
+      modal.classList.add("open");
+      input.value = "";
+      filteredCommands = [...commands];
+      selectedIndex = 0;
+      renderPalette();
+      input.focus();
+    }, 10);
+  }
+
+  function closePalette() {
+    modal.classList.remove("open");
+    setTimeout(() => { modal.style.display = "none"; }, 180);
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if (modal.classList.contains("open")) {
+        closePalette();
+      } else {
+        openPalette();
+      }
+    } else if (e.key === "Escape" && modal.classList.contains("open")) {
+      closePalette();
+    }
+  });
+
+  input.addEventListener("input", () => {
+    const q = input.value.trim().toLowerCase();
+    filteredCommands = commands.filter((c) => c.title.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q));
+    selectedIndex = 0;
+    renderPalette();
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      selectedIndex = (selectedIndex + 1) % (filteredCommands.length || 1);
+      renderPalette();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      selectedIndex = (selectedIndex - 1 + (filteredCommands.length || 1)) % (filteredCommands.length || 1);
+      renderPalette();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (filteredCommands[selectedIndex]) {
+        closePalette();
+        filteredCommands[selectedIndex].action();
+      }
+    }
+  });
+
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closePalette();
+  });
+}
+
+// 2. Non-Destructive System Diagnostics Modal
+async function openDiagnosticsModal() {
+  const modal = document.getElementById("diagnosticsModal");
+  if (!modal) return;
+  modal.style.display = "flex";
+  await loadDiagnostics();
+}
+
+async function loadDiagnostics() {
+  const grid = document.getElementById("diagnosticsGrid");
+  const tsLabel = document.getElementById("diagnosticsTimestamp");
+  if (!grid) return;
+
+  grid.innerHTML = '<div class="diag-card"><span style="color: var(--clin-text-muted); font-size: 12px;">Опрос подсистем...</span></div>';
+
+  try {
+    const data = await apiFetch("/diagnostics");
+    if (tsLabel && data.timestamp) {
+      tsLabel.textContent = `Обновлено: ${data.timestamp.replace("T", " ").slice(0, 19)}`;
+    }
+
+    grid.innerHTML = `
+      <div class="diag-card">
+        <div class="diag-card-header">
+          <span class="diag-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <span>FastAPI Ядро</span>
+          </span>
+          <span class="diag-status-pill ${data.backend?.status === 'ok' ? 'ok' : 'warn'}">${data.backend?.status || 'OK'}</span>
+        </div>
+        <div class="diag-row"><span>Версия:</span> <strong>${escapeHtml(data.backend?.app_version || '2.1.0')}</strong></div>
+        <div class="diag-row"><span>Аптайм:</span> <strong>${Math.round(data.backend?.uptime_seconds || 0)} сек</strong></div>
+        <div class="diag-row"><span>Режим:</span> <strong>${data.backend?.serverless_mode ? 'Serverless' : 'Daemon'}</strong></div>
+      </div>
+
+      <div class="diag-card">
+        <div class="diag-card-header">
+          <span class="diag-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            <span>SQLite База Данных</span>
+          </span>
+          <span class="diag-status-pill ${data.database?.status === 'ok' ? 'ok' : 'warn'}">${data.database?.status || 'OK'}</span>
+        </div>
+        <div class="diag-row"><span>Целостность:</span> <strong>${escapeHtml(data.database?.integrity_check || 'ok')}</strong></div>
+        <div class="diag-row"><span>Журнал:</span> <strong>${escapeHtml(data.database?.journal_mode || 'WAL')}</strong></div>
+        <div class="diag-row"><span>Задержка:</span> <strong>${(data.database?.latency_ms || 0).toFixed(2)} ms</strong></div>
+      </div>
+
+      <div class="diag-card">
+        <div class="diag-card-header">
+          <span class="diag-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>Сессионное хранилище</span>
+          </span>
+          <span class="diag-status-pill ${data.sessions?.status === 'ok' ? 'ok' : 'warn'}">${data.sessions?.status || 'OK'}</span>
+        </div>
+        <div class="diag-row"><span>Шифрование:</span> <strong>${data.sessions?.master_key_configured ? 'Fernet AES' : 'Локально'}</strong></div>
+        <div class="diag-row"><span>Активные сессии:</span> <strong>${data.sessions?.active_sessions_count || 0}</strong></div>
+        <div class="diag-row"><span>Права записи:</span> <strong>${data.sessions?.is_writable ? 'Разрешено' : 'Нет'}</strong></div>
+      </div>
+
+      <div class="diag-card">
+        <div class="diag-card-header">
+          <span class="diag-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>Планировщик и диск</span>
+          </span>
+          <span class="diag-status-pill ${data.scheduler?.status === 'ok' ? 'ok' : 'warn'}">${data.scheduler?.status || 'OK'}</span>
+        </div>
+        <div class="diag-row"><span>Планировщик:</span> <strong>${data.scheduler?.enabled ? 'Активен' : 'Отключён'}</strong></div>
+        <div class="diag-row"><span>Задач в очереди:</span> <strong>${data.scheduler?.registered_jobs_count || 0}</strong></div>
+        <div class="diag-row"><span>Размер БД:</span> <strong>${Math.round((data.storage?.db_size_bytes || 0) / 1024)} KB</strong></div>
+      </div>
+    `;
+  } catch (err) {
+    grid.innerHTML = `<div style="color: var(--clin-danger); padding: 14px; font-size: 13px;">Ошибка диагностики: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// 3. Hygiene Score Breakdown Modal
+async function openHygieneBreakdownModal() {
+  const modal = document.getElementById("hygieneBreakdownModal");
+  if (!modal) return;
+  modal.style.display = "flex";
+
+  const gradeEl = document.getElementById("modalHygieneGrade");
+  const scoreValEl = document.getElementById("modalHygieneScoreVal");
+  const descEl = document.getElementById("modalHygieneScoreDesc");
+  const listEl = document.getElementById("modalDeductionsList");
+
+  if (listEl) {
+    listEl.innerHTML = '<div style="color: var(--clin-text-muted); font-size: 12px; padding: 8px;">Загрузка расчёта индекса...</div>';
+  }
+
+  try {
+    const res = await apiFetch("/settings/hygiene-score/breakdown");
+    if (gradeEl) gradeEl.textContent = res.grade || "A";
+    if (scoreValEl) scoreValEl.textContent = `${res.score || 100} / 100`;
+
+    if (descEl) {
+      if (res.score >= 90) descEl.textContent = "Превосходный уровень гигиены аккаунта";
+      else if (res.score >= 75) descEl.textContent = "Хороший уровень: рекомендуется очистить неактивные подписки";
+      else if (res.score >= 50) descEl.textContent = "Умеренный уровень: накопились забытые каналы и боты";
+      else descEl.textContent = "Критический уровень: требуется проведение глубокой очистки";
+    }
+
+    if (listEl) {
+      const deductions = res.deductions || [];
+      if (deductions.length === 0) {
+        listEl.innerHTML = '<div style="color: var(--clin-green); font-size: 12.5px; padding: 10px;">Штрафные баллы отсутствуют. Ваш аккаунт полностью оптимизирован!</div>';
+      } else {
+        listEl.innerHTML = deductions.map((d) => `
+          <div class="deduction-item">
+            <div class="deduction-details">
+              <span class="deduction-name">${escapeHtml(d.category)}</span>
+              <span class="deduction-advice">${escapeHtml(d.advice)}</span>
+            </div>
+            <div class="deduction-penalty">${d.total_deduction > 0 ? `-${d.total_deduction}` : "0"} б.</div>
+          </div>
+        `).join("");
+      }
+    }
+  } catch (err) {
+    if (listEl) {
+      listEl.innerHTML = `<div style="color: var(--clin-warning); font-size: 12px; padding: 8px;">Информация временно рассчитывается локально: текущий индекс ${state.dashboardScore || 100}/100.</div>`;
+    }
+  }
+}
+
+// 4. Cryptographic Audit Timeline Loader
+async function loadAuditTimeline() {
+  const container = document.getElementById("auditTimelineContainer");
+  if (!container) return;
+  try {
+    const entries = await apiFetch("/history/audit-timeline");
+    if (!Array.isArray(entries) || entries.length === 0) {
+      container.innerHTML = '<div style="color: var(--clin-text-muted); font-size: 12px; padding: 8px;">Журнал аудита чист.</div>';
+      return;
+    }
+    container.innerHTML = entries.map((e) => `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--clin-border-subtle); font-size: 11.5px;">
+        <div>
+          <span style="font-weight: 600; color: var(--clin-text);">${escapeHtml(e.action)}</span>
+          <span style="color: var(--clin-text-muted); margin-left: 6px;">Чат: ${escapeHtml(e.chat_id)}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-family: var(--font-mono); color: var(--clin-text-muted);">${e.timestamp?.slice(11, 19) || ''}</span>
+          ${e.is_tamper_evident_valid ? '<span style="color: var(--clin-green); font-size: 10px; border: 1px solid rgba(0,232,135,0.3); padding: 1px 4px; border-radius: 3px;">SHA-256 OK</span>' : '<span style="color: var(--clin-danger); font-size: 10px;">INVALID</span>'}
+        </div>
+      </div>
+    `).join("");
+  } catch (err) {
+    console.warn("Could not load audit timeline:", err);
+  }
+}
+

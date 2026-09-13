@@ -1,15 +1,24 @@
 :root {
-  /* CLIN Color Palette */
-  --clin-bg: #090B0D;
-  --clin-surface: #111417;
-  --clin-surface-secondary: #15191C;
-  --clin-surface-elevated: #191D20;
-  --clin-border-subtle: rgba(255, 255, 255, 0.06);
-  --clin-border-strong: rgba(255, 255, 255, 0.12);
+  /* CLIN Apple Liquid Glass System */
+  --clin-bg: #07090B;
+  --clin-surface: #0B0E10;
+  --clin-surface-secondary: #101417;
+  --clin-surface-elevated: #14191D;
+  --clin-surface-glass: rgba(255, 255, 255, 0.035);
+  --clin-surface-glass-hover: rgba(255, 255, 255, 0.055);
+  --clin-surface-glass-active: rgba(255, 255, 255, 0.075);
   
+  --clin-border-subtle: rgba(255, 255, 255, 0.07);
+  --clin-border-strong: rgba(255, 255, 255, 0.12);
+  --clin-border-glass: rgba(255, 255, 255, 0.09);
+  --clin-highlight-inner: inset 0 1px 0 rgba(255, 255, 255, 0.11);
+  --clin-highlight-inner-subtle: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
   --clin-green: #00E887;
   --clin-green-hover: #00C97A;
   --clin-green-subtle: rgba(0, 232, 135, 0.12);
+  --clin-green-glow: 0 0 16px rgba(0, 232, 135, 0.25);
+  --clin-green-ring: 0 0 0 3px rgba(0, 232, 135, 0.18);
   
   --clin-danger: #FF5268;
   --clin-danger-subtle: rgba(255, 82, 104, 0.12);
@@ -23,14 +32,18 @@
   --sidebar-width: 240px;
   --header-height: 54px;
   --bottom-nav-height: 64px;
+  --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  --radius-xl: 20px;
   
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
   
-  --transition-fast: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --glass-blur: blur(20px) saturate(180%);
+  --transition-fast: 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 * {
@@ -522,27 +535,154 @@ body {
   cursor: not-allowed;
 }
 
+/* CLIN Liquid Glass Form Controls (Zero White Browser Defaults) */
 input[type="text"],
 input[type="password"],
+input[type="number"],
+input[type="tel"],
+input[type="search"],
+input[type="email"],
 textarea,
-select {
+select,
+.clin-input,
+.form-input {
   width: 100%;
   background-color: var(--clin-surface-secondary);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 100%);
   border: 1px solid var(--clin-border-strong);
+  box-shadow: var(--clin-highlight-inner-subtle);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   color: var(--clin-text);
   font-size: 13.5px;
   font-family: inherit;
   outline: none;
-  transition: border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* Remove default number spin arrows */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Form Input Placeholders */
+input::placeholder,
+textarea::placeholder {
+  color: var(--clin-text-muted);
+  opacity: 0.85;
+}
+
+/* Hover and Focus States */
+input[type="text"]:hover,
+input[type="password"]:hover,
+input[type="number"]:hover,
+input[type="tel"]:hover,
+input[type="search"]:hover,
+input[type="email"]:hover,
+textarea:hover,
+select:hover,
+.clin-input:hover,
+.form-input:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background-color: var(--clin-surface-elevated);
 }
 
 input[type="text"]:focus,
 input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="tel"]:focus,
+input[type="search"]:focus,
+input[type="email"]:focus,
 textarea:focus,
-select:focus {
-  border-color: var(--clin-green);
+select:focus,
+.clin-input:focus,
+.form-input:focus {
+  border-color: rgba(0, 232, 135, 0.7);
+  box-shadow: var(--clin-green-ring), var(--clin-highlight-inner);
+  background-color: var(--clin-surface-elevated);
+}
+
+/* Error state */
+.clin-input.has-error,
+.form-input.has-error {
+  border-color: var(--clin-danger) !important;
+  box-shadow: 0 0 0 3px var(--clin-danger-subtle) !important;
+}
+
+/* Input wrappers & integrated icons */
+.clin-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.clin-input-wrapper .clin-input-icon-left {
+  position: absolute;
+  left: 12px;
+  pointer-events: none;
+  color: var(--clin-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clin-input-wrapper.has-icon-left input {
+  padding-left: 38px;
+}
+
+.clin-input-wrapper .btn-toggle-pwd,
+.input-password-wrap .btn-toggle-pwd {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--clin-text-muted);
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.clin-input-wrapper .btn-toggle-pwd:hover,
+.input-password-wrap .btn-toggle-pwd:hover {
+  color: var(--clin-text);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.clin-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--clin-text-secondary);
+  margin-bottom: 6px;
+}
+
+.clin-help {
+  font-size: 11.5px;
+  color: var(--clin-text-muted);
+  margin-top: 5px;
+  display: block;
+}
+
+.clin-error {
+  font-size: 11.5px;
+  color: var(--clin-danger);
+  margin-top: 5px;
+  display: block;
 }
 
 .form-group {
@@ -1839,4 +1979,471 @@ select option,
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ======================================================== */
+/* CLIN 2.0 APPLE LIQUID GLASS EXTENSIONS                    */
+/* ======================================================== */
+
+/* Custom Dark Liquid Glass Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* 1. Mobile Bottom Sheet (#mobileMoreSheet) */
+#mobileMoreSheet.modal-overlay {
+  align-items: flex-end;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.65);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition: opacity 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#mobileMoreSheet.modal-overlay.open,
+#mobileMoreSheet.modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#mobileMoreSheet .bottom-sheet-content {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  background: rgba(14, 18, 22, 0.94);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--clin-border-strong);
+  border-bottom: none;
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.7), var(--clin-highlight-inner);
+  padding: 12px 18px calc(24px + env(safe-area-inset-bottom, 12px));
+  transform: translateY(100%);
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#mobileMoreSheet.modal-overlay.open .bottom-sheet-content,
+#mobileMoreSheet.modal-overlay.active .bottom-sheet-content {
+  transform: translateY(0);
+}
+
+.sheet-handle {
+  width: 38px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  margin: 0 auto 16px;
+  cursor: grab;
+}
+
+.sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--clin-text);
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.sheet-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.sheet-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--clin-border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--clin-text);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.sheet-item:hover,
+.sheet-item:active {
+  background: rgba(0, 232, 135, 0.08);
+  border-color: rgba(0, 232, 135, 0.3);
+  transform: translateY(-2px);
+}
+
+.sheet-item svg {
+  color: var(--clin-green);
+}
+
+.sheet-item span {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+}
+
+/* 2. Command Palette (Ctrl+K) */
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.palette-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.palette-box {
+  width: 92%;
+  max-width: 580px;
+  background: rgba(14, 18, 22, 0.95);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--clin-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.85), var(--clin-highlight-inner);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.palette-search-wrap {
+  display: flex;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--clin-border-subtle);
+  gap: 12px;
+}
+
+.palette-search-wrap svg {
+  color: var(--clin-green);
+  flex-shrink: 0;
+}
+
+.palette-input {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-size: 14.5px !important;
+  padding: 0 !important;
+  color: var(--clin-text) !important;
+  width: 100%;
+}
+
+.palette-results {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  color: var(--clin-text);
+  font-size: 13.5px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  transition: background-color var(--transition-fast);
+}
+
+.palette-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.palette-item:hover,
+.palette-item.active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.palette-item.active {
+  background: rgba(0, 232, 135, 0.12);
+  color: var(--clin-green);
+}
+
+.palette-shortcut-badge {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--clin-text-muted);
+}
+
+.palette-footer {
+  padding: 10px 18px;
+  border-top: 1px solid var(--clin-border-subtle);
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--clin-text-muted);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* 3. System Diagnostics Modal (#diagnosticsModal) */
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.diag-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--clin-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+.diag-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--clin-border-subtle);
+}
+
+.diag-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--clin-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diag-status-pill {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.diag-status-pill.ok {
+  background: var(--clin-green-subtle);
+  color: var(--clin-green);
+  border: 1px solid rgba(0, 232, 135, 0.3);
+}
+
+.diag-status-pill.warn {
+  background: var(--clin-warning-subtle);
+  color: var(--clin-warning);
+  border: 1px solid rgba(255, 181, 71, 0.3);
+}
+
+.diag-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  padding: 3px 0;
+  color: var(--clin-text-secondary);
+}
+
+.diag-row strong {
+  color: var(--clin-text);
+  font-family: var(--font-mono);
+}
+
+/* 4. Hygiene Score Breakdown Modal (#hygieneModal) */
+.score-big-display {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: rgba(0, 232, 135, 0.05);
+  border: 1px solid rgba(0, 232, 135, 0.25);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+
+.score-grade-badge {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--clin-green);
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 2.5px solid var(--clin-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: var(--clin-green-glow);
+}
+
+.score-info-wrap h4 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--clin-text);
+  margin-bottom: 4px;
+}
+
+.score-info-wrap p {
+  font-size: 12.5px;
+  color: var(--clin-text-secondary);
+}
+
+.deductions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 14px 0;
+}
+
+.deduction-item {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--clin-border-subtle);
+  border-radius: var(--radius-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.deduction-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deduction-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--clin-text);
+}
+
+.deduction-advice {
+  font-size: 11px;
+  color: var(--clin-text-muted);
+}
+
+.deduction-penalty {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--clin-danger);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
+
+/* 5. Rule Simulation Preview Box */
+.rule-sim-box {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--clin-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.rule-sim-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.rule-sim-matches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.rule-match-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(0, 232, 135, 0.1);
+  border: 1px solid rgba(0, 232, 135, 0.25);
+  color: var(--clin-green);
+}
+
+/* Granular Responsive Breakpoints (320px, 360px, 390px, 430px) */
+@media (max-width: 430px) {
+  .diag-grid {
+    grid-template-columns: 1fr;
+  }
+  .score-big-display {
+    flex-direction: column;
+    text-align: center;
+  }
+}
+
+@media (max-width: 390px) {
+  .sheet-menu-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .palette-box {
+    width: 95%;
+  }
+}
+
+@media (max-width: 360px) {
+  .mobile-bottom-nav {
+    padding: 6px 2px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .mobile-nav-btn span {
+    font-size: 9.5px;
+  }
+}
+
+@media (max-width: 320px) {
+  body {
+    font-size: 13px;
+  }
+  .btn {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
+/* Respect user preference for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 

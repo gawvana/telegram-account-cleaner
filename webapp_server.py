@@ -18,6 +18,7 @@ from database import db
 from services.scheduler_service import scheduler_service
 from webapp.api.cleanup import router as cleanup_router
 from webapp.api.consent import router as consent_router
+from webapp.api.diagnostics import router as diagnostics_router
 from webapp.api.history import router as history_router
 from webapp.api.login import router as login_router
 from webapp.api.scan import router as scan_router
@@ -124,6 +125,8 @@ app.include_router(history_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
 app.include_router(consent_router, prefix="/api")
 app.include_router(support_router, prefix="/api")
+app.include_router(diagnostics_router, prefix="/api")
+app.include_router(diagnostics_router)
 
 # Static files for Mini App
 public_path = Path(__file__).parent / "public"

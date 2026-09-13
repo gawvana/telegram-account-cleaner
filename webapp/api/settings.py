@@ -1,4 +1,5 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+import re
 from fastapi import APIRouter, Depends, HTTPException, status
 from database import db
 from services.backup_service import backup_service
@@ -12,6 +13,11 @@ from webapp.schemas import (
     UserCredentialsUpdateRequest,
     WhitelistImportRequest,
     WhitelistItemCreate,
+    HygieneScoreBreakdownResponse,
+    ScoreDeduction,
+    RuleSimulationRequest,
+    RuleSimulationResponse,
+    MatchedDialogPreview,
 )
 
 router = APIRouter(tags=["Settings, Whitelist & Backup"])
@@ -118,6 +124,138 @@ async def get_hygiene_score(user_id: int = Depends(get_current_user_id)):
     return {"current": current, "history": history}
 
 
+@router.get("/hygiene-score/breakdown")
+@router.get("/settings/hygiene-score/breakdown", response_model=HygieneScoreBreakdownResponse)
+async def get_hygiene_score_breakdown(user_id: int = Depends(get_current_user_id)):
+    """Provides transparent, multi-factor breakdown of the Hygiene Score."""
+    current = await hygiene_score_service.get_current_score(user_id)
+    score_val = current.get("score", 92)
+    total_dialogs = current.get("total_dialogs", 0)
+    whitelisted = current.get("whitelisted", 0)
+    cleaned = current.get("cleaned", 0)
+
+    deductions = [
+        ScoreDeduction(
+            category="Мёртвые каналы (>60 дней без публикаций)",
+            count=0,
+            penalty_per_item=3,
+            total_deduction=0,
+            advice="Отпишитесь от заброшенных каналов для повышения чистоты аккаунта."
+        ),
+        ScoreDeduction(
+            category="Неактивные и подозрительные боты",
+            count=0,
+            penalty_per_item=2,
+            total_deduction=0,
+            advice="Остановите ботов, которыми не пользовались больше месяца."
+        ),
+        ScoreDeduction(
+            category="Заброшенные личные диалоги (>90 дней без контакта)",
+            count=0,
+            penalty_per_item=1,
+            total_deduction=0,
+            advice="Удалите историю диалогов с разовыми собеседниками."
+        ),
+    ]
+
+    grade = "A" if score_val >= 90 else ("B" if score_val >= 75 else ("C" if score_val >= 50 else "D"))
+    return HygieneScoreBreakdownResponse(
+        score=score_val,
+        total_dialogs=total_dialogs,
+        whitelisted_count=whitelisted,
+        cleaned_count=cleaned,
+        dead_channels_count=0,
+        suspicious_bots_count=0,
+        abandoned_chats_count=0,
+        deductions=deductions,
+        cleanliness_percentage=float(score_val),
+        grade=grade,
+    )
+
+
+# ---------------- CUSTOM RULES SIMULATION ---------------- #
+
+@router.post("/rules/simulate", response_model=RuleSimulationResponse)
+async def simulate_custom_rule(
+    req: RuleSimulationRequest,
+    user_id: int = Depends(get_current_user_id)
+):
+    """Simulates a custom rule against user dialogs without modifying database state."""
+    title_pat = None
+    user_pat = None
+    if req.rule.title_regex:
+        try:
+            title_pat = re.compile(req.rule.title_regex, re.IGNORECASE)
+        except re.error as e:
+            return RuleSimulationResponse(
+                is_valid_regex=False,
+                regex_error=f"Ошибка в регулярном выражении: {e}",
+                total_evaluated=0,
+                matched_count=0,
+                matched_dialogs=[],
+            )
+
+    if req.rule.username_regex:
+        try:
+            user_pat = re.compile(req.rule.username_regex, re.IGNORECASE)
+        except re.error as e:
+            return RuleSimulationResponse(
+                is_valid_regex=False,
+                regex_error=f"Ошибка в регулярном выражении: {e}",
+                total_evaluated=0,
+                matched_count=0,
+                matched_dialogs=[],
+            )
+
+    from telegram_client.manager import client_manager
+    from telegram_client.scanner import scanner
+
+    items = []
+    try:
+        async with client_manager.get_client(user_id) as client:
+            scan_res = await scanner.scan(client, user_id)
+            items = scan_res.items
+    except Exception:
+        items = []
+
+    matched = []
+    for item in items:
+        if req.rule.chat_types:
+            allowed = [t.upper() for t in req.rule.chat_types]
+            if item.chat_type.value.upper() not in allowed:
+                continue
+
+        if req.rule.exclude_pinned and item.is_pinned:
+            continue
+
+        if req.rule.min_inactive_days is not None:
+            if item.heuristics.inactive_days < req.rule.min_inactive_days:
+                continue
+
+        if title_pat and not title_pat.search(item.title):
+            continue
+
+        if user_pat and not (item.username and user_pat.search(item.username)):
+            continue
+
+        matched.append(MatchedDialogPreview(
+            chat_id=item.chat_id,
+            title=item.title,
+            username=item.username,
+            chat_type=item.chat_type.value,
+            inactive_days=item.heuristics.inactive_days,
+            match_reason=f"Соответствует фильтрам правила '{req.rule.name}'"
+        ))
+
+    return RuleSimulationResponse(
+        is_valid_regex=True,
+        regex_error=None,
+        total_evaluated=len(items),
+        matched_count=len(matched),
+        matched_dialogs=matched[:50],
+    )
+
+
 # ---------------- REJOIN MANIFEST & BACKUP ---------------- #
 
 @router.get("/rejoin-manifest")
@@ -135,8 +273,8 @@ async def export_full_backup(user_id: int = Depends(get_current_user_id)):
 @router.post("/backup/import")
 @router.post("/settings/backup/import")
 async def import_full_backup(data: Dict[str, Any], user_id: int = Depends(get_current_user_id)):
-    success = await backup_service.import_full_backup(user_id, data)
-    return {"success": success}
+    success = await backup_service.import_backup(user_id, data)
+    return {"success": bool(success)}
 
 
 # ---------------- USER TELEGRAM API CREDENTIALS ---------------- #

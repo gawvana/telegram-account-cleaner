@@ -392,6 +392,38 @@ class Database:
             )
             await conn.commit()
 
+    async def get_user(self, telegram_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieves user row if exists, or None."""
+        async with self.get_connection() as conn:
+            cursor = await conn.execute(
+                "SELECT * FROM users WHERE telegram_id = ?", (telegram_id,)
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def get_audit_log_timeline(self, telegram_id: int, limit: int = 15) -> List[Dict[str, Any]]:
+        """Retrieves cryptographic audit log entries with SHA256 integrity verification."""
+        async with self.get_connection() as conn:
+            cursor = await conn.execute(
+                """
+                SELECT id, telegram_id, job_id, action, chat_id, timestamp, prev_hash, current_hash
+                FROM audit_log
+                WHERE telegram_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (telegram_id, limit),
+            )
+            rows = await cursor.fetchall()
+            result = []
+            for r in rows:
+                d = dict(r)
+                raw = f"{d['prev_hash']}|{d['telegram_id']}|{d['job_id']}|{d['action']}|{d['chat_id']}|{d['timestamp']}"
+                expected_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+                d["is_tamper_evident_valid"] = (expected_hash == d["current_hash"])
+                result.append(d)
+            return result
+
     # ---------------- AUDIT LOG HASH-CHAIN ---------------- #
 
     async def append_audit_log(

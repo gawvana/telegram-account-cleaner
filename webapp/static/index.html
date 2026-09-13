@@ -308,8 +308,10 @@
           <div class="dialogs-toolbar">
             <div class="search-input-wrapper">
               <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" id="dialogSearchInput" placeholder="Поиск диалогов по названию или @username..." />
-              <button class="search-clear-btn" id="btnSearchClear" style="display: none;">✕</button>
+              <input type="text" id="dialogSearchInput" class="clin-input" placeholder="Поиск диалогов по названию или @username..." />
+              <button class="search-clear-btn" id="btnSearchClear" style="display: none;" title="Очистить">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
             </div>
             <div class="filter-chips">
               <button class="chip active" data-filter="all">Все</button>
@@ -327,7 +329,10 @@
               Выбрано: <strong id="selectedCountLabel">0</strong>
             </div>
             <div class="selection-buttons">
-              <button class="btn btn-sm btn-secondary" id="btnSelectionWhitelist">⭐ В белый список</button>
+              <button class="btn btn-sm btn-secondary" id="btnSelectionWhitelist">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <span>В белый список</span>
+              </button>
               <button class="btn btn-sm btn-danger" id="btnSelectionDelete">Удалить / Покинуть</button>
               <button class="btn btn-sm btn-ghost" id="btnSelectionClear">Снять выбор</button>
             </div>
@@ -354,7 +359,9 @@
           </div>
 
           <div class="smart-clean-banner">
-            <div class="banner-icon">💡</div>
+            <div class="banner-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00E887" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-7 7c0 2.5 1.5 4.7 3.5 6h7c2-1.3 3.5-3.5 3.5-6a7 7 0 0 0-7-7z"/></svg>
+            </div>
             <div class="banner-content">
               <h4>Рекомендации носят исключительно рекомендательный характер</h4>
               <p>Ни один канал или чат не будет удалён без вашего прямого подтверждения. Вы можете отметить нужные объекты галочками.</p>
@@ -385,8 +392,14 @@
               <p class="screen-desc">Чаты и каналы с абсолютной серверной защитой от удаления</p>
             </div>
             <div class="header-actions">
-              <button class="btn btn-secondary btn-sm" id="btnExportWl">📤 Экспорт JSON</button>
-              <button class="btn btn-secondary btn-sm" id="btnImportWl">📥 Импорт JSON</button>
+              <button class="btn btn-secondary btn-sm" id="btnExportWl">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>Экспорт JSON</span>
+              </button>
+              <button class="btn btn-secondary btn-sm" id="btnImportWl">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Импорт JSON</span>
+              </button>
               <input type="file" id="wlFileInput" accept=".json" style="display: none;" />
             </div>
           </div>
@@ -395,8 +408,8 @@
           <div class="card add-wl-card">
             <h4 class="card-heading">Добавить объект в защиту</h4>
             <div class="form-row">
-              <input type="text" id="inputWlChatId" placeholder="Chat ID (например: -1001234567890 или @username)" />
-              <input type="text" id="inputWlTitle" placeholder="Заметка / Название (опционально)" />
+              <input type="text" id="inputWlChatId" class="clin-input" placeholder="Chat ID (например: -1001234567890 или @username)" />
+              <input type="text" id="inputWlTitle" class="clin-input" placeholder="Заметка / Название (опционально)" />
               <button class="btn btn-primary" id="btnAddWlItem">Добавить</button>
             </div>
           </div>
@@ -506,8 +519,8 @@
             <div class="form-group">
               <label class="input-label">Режим выполнения</label>
               <select class="form-select" id="scheduleModeSelect">
-                <option value="dry_run">🧪 Dry-Run (только отчёт в бот, без удаления)</option>
-                <option value="auto">⚠️ Автоматическое удаление (без подтверждения)</option>
+                <option value="dry_run">Dry-Run (безопасный отчёт в бот, без удаления)</option>
+                <option value="auto">Автоматическая очистка (по заданному охвату)</option>
               </select>
               <p class="input-hint text-warning" id="scheduleModeWarning" style="display: none;">
                 Внимание: В режиме автоматического удаления отмеченные чаты будут покидаться автоматически. Чаты из белого списка останутся нетронутыми.
@@ -538,14 +551,17 @@
             </div>
             <div class="header-actions">
               <button class="btn btn-primary btn-sm" id="btnOpenCreateTicketModal">
-                <span>➕ Новый тикет</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Новый тикет</span>
               </button>
             </div>
           </div>
 
           <!-- Security Alert Box -->
           <div class="security-warning-banner">
-            <div class="warning-icon">🛡️</div>
+            <div class="warning-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00E887" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
             <div class="warning-body">
               <strong>Правило безопасности CLIN:</strong>
               <p>Сотрудники поддержки НИКОГДА не запрашивают ваши коды из SMS, пароли двухэтапной аутентификации (2FA) или сессионные ключи. Никогда не отправляйте их в тикетах!</p>
@@ -605,30 +621,38 @@
 
                 <div class="form-group" style="margin-bottom: 12px;">
                   <label class="input-label" for="loginApiIdInput">API ID</label>
-                  <input type="number" id="loginApiIdInput" class="form-input" placeholder="например, 12345678" />
+                  <input type="number" id="loginApiIdInput" class="clin-input form-input" placeholder="например, 12345678" />
                 </div>
 
                 <div class="form-group" style="margin-bottom: 12px;">
                   <label class="input-label" for="loginApiHashInput">API Hash</label>
                   <div class="input-password-wrap" style="position: relative; display: flex; align-items: center;">
-                    <input type="password" id="loginApiHashInput" class="form-input" placeholder="32-значный хэш приложения" autocomplete="off" style="padding-right: 42px; width: 100%;" />
-                    <button type="button" class="btn-toggle-pwd" id="btnToggleApiHash" title="Показать / скрыть API Hash" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--clin-text-muted); font-size: 16px; padding: 4px 8px;">👁️</button>
+                    <input type="password" id="loginApiHashInput" class="clin-input form-input" placeholder="32-значный хэш приложения" autocomplete="off" style="padding-right: 42px; width: 100%;" />
+                    <button type="button" class="btn-toggle-pwd" id="btnToggleApiHash" title="Показать / скрыть API Hash" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--clin-text-muted); padding: 4px 8px;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
                   </div>
-                  <span class="field-security-hint" style="display: block; font-size: 11px; color: var(--clin-text-muted); margin-top: 5px;">🔒 Никому не передавайте этот ключ. CLIN не запрашивает его через поддержку.</span>
+                  <span class="field-security-hint" style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--clin-text-muted); margin-top: 6px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span>Никому не передавайте этот ключ. CLIN не запрашивает его через поддержку.</span>
+                  </span>
                 </div>
 
                 <div class="creds-actions-row" style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
                   <button type="button" class="btn btn-secondary btn-sm" id="btnOpenApiGuide">Где их взять?</button>
                   <button type="button" class="btn btn-primary btn-sm" id="btnProceedToPhone">Продолжить</button>
                 </div>
-                <div class="transparency-note" style="font-size: 11px; color: var(--clin-text-muted); margin-top: 12px;">ℹ️ CLIN использует Telegram API для подключения вашего аккаунта.</div>
+                <div class="transparency-note" style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--clin-text-muted); margin-top: 12px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  <span>CLIN использует официальный Telegram API для прямого подключения вашего аккаунта.</span>
+                </div>
               </div>
 
               <!-- Step 2: Phone Input -->
               <div id="loginPhoneStep" style="display: none; margin-top: 16px;">
                 <p class="form-instruction">Введите номер телефона в международном формате:</p>
                 <div class="form-row">
-                  <input type="tel" id="loginPhoneInput" class="form-input" placeholder="+79991234567" />
+                  <input type="tel" id="loginPhoneInput" class="clin-input form-input" placeholder="+79991234567" />
                   <button class="btn btn-primary" id="btnSendAuthCode">Отправить код</button>
                 </div>
                 <button type="button" class="btn-text-link" id="btnBackToCreds" style="margin-top: 8px; font-size: 12px;">← Изменить API ID / Hash</button>
@@ -638,7 +662,7 @@
               <div id="loginCodeStep" style="display: none; margin-top: 16px;">
                 <p class="form-instruction">Введите 5-значный код из Telegram:</p>
                 <div class="form-row">
-                  <input type="text" id="loginCodeInput" class="form-input" placeholder="Код подтверждения" />
+                  <input type="text" id="loginCodeInput" class="clin-input form-input" placeholder="Код подтверждения" />
                   <button class="btn btn-primary" id="btnVerifyAuthCode">Подтвердить</button>
                 </div>
               </div>
@@ -647,7 +671,7 @@
               <div id="login2faStep" style="display: none; margin-top: 16px;">
                 <p class="form-instruction">Введите облачный 2FA пароль:</p>
                 <div class="form-row">
-                  <input type="password" id="login2faInput" class="form-input" placeholder="2FA Пароль" />
+                  <input type="password" id="login2faInput" class="clin-input form-input" placeholder="2FA Пароль" />
                   <button class="btn btn-primary" id="btnVerify2fa">Войти</button>
                 </div>
               </div>
@@ -694,6 +718,18 @@
               <button class="btn btn-secondary" id="btnImportFullBackup">Импорт архива (.json)</button>
               <input type="file" id="backupFileInput" accept=".json" style="display: none;" />
             </div>
+          </div>
+
+          <!-- System Diagnostics Card -->
+          <div class="card settings-card">
+            <div class="card-header-row">
+              <h4 class="card-heading" style="display: flex; align-items: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E887" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <span>Диагностика CLIN</span>
+              </h4>
+              <button class="btn btn-secondary btn-sm" id="btnOpenDiagnosticsModal">Проверить систему</button>
+            </div>
+            <p class="card-desc">Недеструктивная проверка подсистем CLIN: Fast-API ядра, базы данных SQLite, целостности сессий и планировщика.</p>
           </div>
 
           <!-- Privacy & Consent Management -->
@@ -792,7 +828,10 @@
           <p><strong>4. Отзыв согласия:</strong> Вы можете в любой момент отозвать согласие в Настройках — сессия будет мгновенно занулена и удалена с сервера.</p>
         </div>
         <div class="consent-actions">
-          <button class="btn btn-primary btn-block" id="btnAcceptConsent">✅ Принять и продолжить</button>
+          <button class="btn btn-primary btn-block" id="btnAcceptConsent" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Принять и продолжить</span>
+          </button>
         </div>
       </div>
     </div>
@@ -800,7 +839,10 @@
     <!-- DEEP CLEAN 3-SECOND HOLD MODAL -->
     <div class="modal-overlay" id="deepCleanModal" style="display: none;">
       <div class="modal-card">
-        <h3 class="text-danger">⚠️ Подтверждение Deep Clean</h3>
+        <h3 class="text-danger" style="display: flex; align-items: center; gap: 8px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF5268" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>Подтверждение Deep Clean</span>
+        </h3>
         <p class="modal-desc">Операция Deep Clean выполнит комплексную очистку всех диалогов, кроме находящихся в Белом списке. Ссылки на каналы сохранятся в Rejoin Manifest.</p>
         <div class="hold-button-wrapper">
           <button class="btn btn-danger btn-block btn-hold" id="btnHoldDeepClean">
@@ -816,12 +858,13 @@
     <div class="modal-overlay" id="createTicketModal" style="display: none;">
       <div class="modal-card">
         <h3>Новое обращение в поддержку</h3>
-        <div class="security-warning-box" style="margin-bottom: 12px; font-size: 12px; padding: 10px 14px; border-radius: 8px; background: rgba(255, 82, 104, 0.1); border: 1px solid rgba(255, 82, 104, 0.25); color: #FF8F9C;">
-          ⚠️ <strong>Безопасность:</strong> Никогда не отправляйте API Hash, Telegram код, 2FA пароль или session string в поддержку.
+        <div class="security-warning-box" style="margin-bottom: 12px; font-size: 12px; padding: 10px 14px; border-radius: 8px; background: rgba(255, 82, 104, 0.1); border: 1px solid rgba(255, 82, 104, 0.25); color: #FF8F9C; display: flex; align-items: flex-start; gap: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF5268" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div><strong>Безопасность:</strong> Никогда не отправляйте API Hash, Telegram код, 2FA пароль или session string в поддержку.</div>
         </div>
         <div class="form-group">
           <label class="input-label">Категория</label>
-          <select class="form-select" id="ticketCategorySelect">
+          <select class="form-select clin-input" id="ticketCategorySelect">
             <option value="login_problem">Проблема со входом / авторизацией</option>
             <option value="cleanup_problem">Вопрос по очистке или отчёту</option>
             <option value="bug">Сообщение об ошибке (баг)</option>
@@ -831,11 +874,11 @@
         </div>
         <div class="form-group">
           <label class="input-label">Тема обращения</label>
-          <input type="text" id="ticketSubjectInput" placeholder="Краткое описание вопроса" />
+          <input type="text" id="ticketSubjectInput" class="clin-input form-input" placeholder="Краткое описание вопроса" />
         </div>
         <div class="form-group">
           <label class="input-label">Подробное описание</label>
-          <textarea id="ticketDescriptionInput" rows="4" placeholder="Опишите, что произошло. Напоминаем: никогда не указывайте API Hash, пароли или SMS-коды."></textarea>
+          <textarea id="ticketDescriptionInput" class="clin-input form-input" rows="4" placeholder="Опишите, что произошло. Напоминаем: никогда не указывайте API Hash, пароли или SMS-коды."></textarea>
         </div>
         <div class="modal-actions-row">
           <button class="btn btn-secondary" id="btnCancelCreateTicket">Отмена</button>
@@ -849,36 +892,35 @@
       <div class="modal-card">
         <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
           <h3 style="margin: 0; font-size: 16px;">Как получить API ID и API Hash</h3>
-          <button class="btn-close-modal" id="btnCloseApiGuideModal" style="background: none; border: none; font-size: 18px; color: var(--clin-text-muted); cursor: pointer;">✕</button>
+          <button class="btn-close-modal" id="btnCloseApiGuideModal" style="background: none; border: none; cursor: pointer; color: var(--clin-text-muted);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <div class="guide-steps-list" style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; margin-bottom: 14px;">
-          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
-            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">1</span>
+          <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+            <span class="step-num font-mono" style="background: rgba(0, 232, 135, 0.15); color: var(--clin-green); border: 1px solid rgba(0, 232, 135, 0.35); font-weight: 700; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px;">01</span>
             <div>Откройте официальный Telegram Core:<br><a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" style="color: var(--clin-green); text-decoration: underline;">https://my.telegram.org</a></div>
           </div>
-          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
-            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">2</span>
-            <div>Войдите в свой Telegram-аккаунт.</div>
+          <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+            <span class="step-num font-mono" style="background: rgba(0, 232, 135, 0.15); color: var(--clin-green); border: 1px solid rgba(0, 232, 135, 0.35); font-weight: 700; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px;">02</span>
+            <div>Войдите в свой Telegram-аккаунт через номер телефона.</div>
           </div>
-          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
-            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">3</span>
-            <div>Откройте: <strong>API development tools</strong>.</div>
+          <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+            <span class="step-num font-mono" style="background: rgba(0, 232, 135, 0.15); color: var(--clin-green); border: 1px solid rgba(0, 232, 135, 0.35); font-weight: 700; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px;">03</span>
+            <div>Откройте раздел: <strong>API development tools</strong>.</div>
           </div>
-          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
-            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">4</span>
-            <div>Создайте приложение, если его ещё нет.</div>
+          <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+            <span class="step-num font-mono" style="background: rgba(0, 232, 135, 0.15); color: var(--clin-green); border: 1px solid rgba(0, 232, 135, 0.35); font-weight: 700; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px;">04</span>
+            <div>Создайте приложение (App), если его ещё нет, указав любое название.</div>
           </div>
-          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
-            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">5</span>
-            <div>Telegram покажет:<br>• <strong>App api_id</strong><br>• <strong>App api_hash</strong></div>
-          </div>
-          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
-            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">6</span>
-            <div>Скопируйте оба значения в CLIN.</div>
+          <div class="guide-step" style="display: flex; gap: 12px; align-items: flex-start;">
+            <span class="step-num font-mono" style="background: rgba(0, 232, 135, 0.15); color: var(--clin-green); border: 1px solid rgba(0, 232, 135, 0.35); font-weight: 700; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px;">05</span>
+            <div>Telegram сгенерирует ключи:<br>• <strong>App api_id</strong> (число)<br>• <strong>App api_hash</strong> (хэш-строка)</div>
           </div>
         </div>
-        <div class="security-warning-box" style="padding: 10px 12px; border-radius: 8px; background: rgba(255, 82, 104, 0.1); border: 1px solid rgba(255, 82, 104, 0.25); color: #FF8F9C; font-size: 12px;">
-          ⚠️ <strong>Важно:</strong> API Hash нельзя публиковать или отправлять другим людям. Не добавляйте его в GitHub, README или скриншоты.
+        <div class="security-warning-box" style="padding: 10px 12px; border-radius: 8px; background: rgba(255, 82, 104, 0.1); border: 1px solid rgba(255, 82, 104, 0.25); color: #FF8F9C; font-size: 12px; display: flex; align-items: flex-start; gap: 8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF5268" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div><strong>Важно:</strong> API Hash нельзя публиковать или отправлять другим людям. Не добавляйте его в открытый доступ.</div>
         </div>
         <button class="btn btn-primary btn-block" id="btnAckApiGuide" style="margin-top: 14px;">Понятно</button>
       </div>
@@ -889,20 +931,27 @@
       <div class="modal-card">
         <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
           <h3 style="margin: 0; font-size: 16px;">Изменение Telegram API</h3>
-          <button class="btn-close-modal" id="btnCloseChangeCredsModal" style="background: none; border: none; font-size: 18px; color: var(--clin-text-muted); cursor: pointer;">✕</button>
+          <button class="btn-close-modal" id="btnCloseChangeCredsModal" style="background: none; border: none; cursor: pointer; color: var(--clin-text-muted);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <p class="modal-desc" style="font-size: 13px; color: var(--clin-text-muted); margin-bottom: 14px;">Введите новые данные приложения из <a href="https://my.telegram.org" target="_blank" style="color: var(--clin-green);">my.telegram.org</a>. Ключи сохраняются локально в зашифрованном виде.</p>
         <div class="form-group" style="margin-bottom: 12px;">
           <label class="input-label" for="changeApiIdInput">API ID</label>
-          <input type="number" id="changeApiIdInput" class="form-input" placeholder="например, 12345678" />
+          <input type="number" id="changeApiIdInput" class="clin-input form-input" placeholder="например, 12345678" />
         </div>
         <div class="form-group" style="margin-bottom: 12px;">
           <label class="input-label" for="changeApiHashInput">API Hash</label>
           <div class="input-password-wrap" style="position: relative; display: flex; align-items: center;">
-            <input type="password" id="changeApiHashInput" class="form-input" placeholder="32-значный хэш" autocomplete="off" style="padding-right: 42px; width: 100%;" />
-            <button type="button" class="btn-toggle-pwd" id="btnToggleChangeApiHash" title="Показать / скрыть" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--clin-text-muted); font-size: 16px; padding: 4px 8px;">👁️</button>
+            <input type="password" id="changeApiHashInput" class="clin-input form-input" placeholder="32-значный хэш" autocomplete="off" style="padding-right: 42px; width: 100%;" />
+            <button type="button" class="btn-toggle-pwd" id="btnToggleChangeApiHash" title="Показать / скрыть" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--clin-text-muted); padding: 4px 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
           </div>
-          <span class="field-security-hint" style="display: block; font-size: 11px; color: var(--clin-text-muted); margin-top: 5px;">🔒 Никому не передавайте этот ключ. CLIN не запрашивает его через поддержку.</span>
+          <span class="field-security-hint" style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--clin-text-muted); margin-top: 6px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>Никому не передавайте этот ключ. CLIN не запрашивает его через поддержку.</span>
+          </span>
         </div>
         <div class="modal-actions-row" style="display: flex; gap: 10px; margin-top: 14px;">
           <button class="btn btn-secondary" id="btnCancelChangeCreds">Отмена</button>
@@ -919,15 +968,87 @@
             <span class="ticket-number-badge" id="threadTicketNumber">CLIN-00000</span>
             <h3 id="threadTicketSubject">Тема обращения</h3>
           </div>
-          <button class="btn-close-modal" id="btnCloseThreadModal">✕</button>
+          <button class="btn-close-modal" id="btnCloseThreadModal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
         <div class="thread-messages-list" id="threadMessagesContainer">
           <!-- Messages flow -->
         </div>
         <div class="thread-reply-row">
-          <input type="text" id="threadReplyInput" placeholder="Напишите ответ в тикет..." />
+          <input type="text" id="threadReplyInput" class="clin-input form-input" placeholder="Напишите ответ в тикет..." />
           <button class="btn btn-primary btn-sm" id="btnSendThreadReply">Отправить</button>
         </div>
+      </div>
+    </div>
+
+    <!-- COMMAND PALETTE (CTRL+K) -->
+    <div class="palette-overlay" id="commandPaletteModal" style="display: none;">
+      <div class="palette-box">
+        <div class="palette-search-wrap">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="commandPaletteInput" class="palette-input" placeholder="Введите команду или поиск раздела..." autocomplete="off" />
+          <span class="palette-shortcut-badge">ESC</span>
+        </div>
+        <div class="palette-results" id="commandPaletteResults">
+          <!-- Populated dynamically -->
+        </div>
+        <div class="palette-footer">
+          <span>Навигация: <strong>↑</strong> <strong>↓</strong> для выбора, <strong>Enter</strong> для перехода</span>
+          <span>CLIN 2.0 Command Hub</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SYSTEM DIAGNOSTICS MODAL -->
+    <div class="modal-overlay" id="diagnosticsModal" style="display: none;">
+      <div class="modal-card" style="max-width: 580px;">
+        <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E887" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span>Системная диагностика CLIN</span>
+          </h3>
+          <button class="btn-close-modal" id="btnCloseDiagnosticsModal" style="background: none; border: none; cursor: pointer; color: var(--clin-text-muted);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <p class="modal-desc" style="font-size: 12.5px; color: var(--clin-text-muted); margin-bottom: 12px;">
+          Недеструктивная проверка подсистем CLIN: API ядра, базы данных SQLite, хранилища сессий и планировщика.
+        </p>
+        <div class="diag-grid" id="diagnosticsGrid">
+          <div class="diag-card"><span style="color: var(--clin-text-muted); font-size: 12px;">Опрос подсистем...</span></div>
+        </div>
+        <div class="modal-actions-row" style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
+          <span style="font-size: 11px; color: var(--clin-text-muted);" id="diagnosticsTimestamp">Обновлено: --</span>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary btn-sm" id="btnRefreshDiagnostics">Обновить</button>
+            <button class="btn btn-primary btn-sm" id="btnCloseDiagnosticsBtn">Готово</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HYGIENE SCORE BREAKDOWN MODAL -->
+    <div class="modal-overlay" id="hygieneBreakdownModal" style="display: none;">
+      <div class="modal-card" style="max-width: 540px;">
+        <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 16px;">Расчёт индекса гигиены</h3>
+          <button class="btn-close-modal" id="btnCloseHygieneModal" style="background: none; border: none; cursor: pointer; color: var(--clin-text-muted);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="score-big-display">
+          <div class="score-grade-badge" id="modalHygieneGrade">A</div>
+          <div class="score-info-wrap">
+            <h4 id="modalHygieneScoreVal">95 / 100</h4>
+            <p id="modalHygieneScoreDesc">Отличный уровень цифровой чистоты Telegram</p>
+          </div>
+        </div>
+        <p style="font-size: 12px; color: var(--clin-text-muted); margin-bottom: 8px;">Штрафные баллы и факторы риска:</p>
+        <div class="deductions-list" id="modalDeductionsList">
+          <!-- Populated by JS -->
+        </div>
+        <button class="btn btn-primary btn-block" id="btnAckHygieneModal" style="margin-top: 14px;">Понятно</button>
       </div>
     </div>
 

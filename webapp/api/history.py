@@ -36,3 +36,9 @@ async def get_admin_stats(user_id: int = Depends(get_current_user_id)):
                 detail="Доступ запрещён. Требуются права администратора.",
             )
     return await statistics_service.get_anonymized_admin_stats()
+
+
+@router.get("/audit-timeline")
+async def get_audit_timeline(limit: int = 15, user_id: int = Depends(get_current_user_id)):
+    """Fetches cryptographic audit log entries with SHA-256 tamper-evident integrity status."""
+    return await db.get_audit_log_timeline(user_id, limit=min(max(limit, 1), 50))
