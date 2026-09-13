@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from telegram_client.auth import auth_manager
 from telegram_client.manager import client_manager
+from utils.rate_limiter import auth_rate_limiter
 from webapp.api.auth import get_current_user_id
 from webapp.schemas import Login2FASubmit, LoginCodeRequest, LoginCodeSubmit
 from utils.logger import logger
@@ -26,6 +27,7 @@ async def get_auth_status(user_id: int = Depends(get_current_user_id)):
 @router.post("/request-code")
 async def request_code(req: LoginCodeRequest, user_id: int = Depends(get_current_user_id)):
     """Step 1: Mini App requests SMS/Telegram code securely."""
+    await auth_rate_limiter.check(str(user_id))
     try:
         auth_state = await auth_manager.request_phone_code(
             telegram_id=user_id,
@@ -40,6 +42,8 @@ async def request_code(req: LoginCodeRequest, user_id: int = Depends(get_current
             "expires_at": auth_state.expires_at,
             "message": "Код подтверждения отправлен в ваш Telegram.",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in request-code: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -49,6 +53,7 @@ async def request_code(req: LoginCodeRequest, user_id: int = Depends(get_current
 @router.post("/submit-code")
 async def submit_code(req: LoginCodeSubmit, user_id: int = Depends(get_current_user_id)):
     """Step 2: Mini App submits authentication code."""
+    await auth_rate_limiter.check(str(user_id))
     try:
         auth_state, session_file = await auth_manager.submit_auth_code(user_id, req.code)
         return {
@@ -58,6 +63,8 @@ async def submit_code(req: LoginCodeSubmit, user_id: int = Depends(get_current_u
             "is_authorized": auth_state.is_authorized,
             "message": "Аккаунт успешно подключён!" if auth_state.is_authorized else "Требуется 2FA пароль.",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in submit-code: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -67,6 +74,7 @@ async def submit_code(req: LoginCodeSubmit, user_id: int = Depends(get_current_u
 @router.post("/submit-2fa")
 async def submit_2fa(req: Login2FASubmit, user_id: int = Depends(get_current_user_id)):
     """Step 3: Mini App submits 2FA cloud password."""
+    await auth_rate_limiter.check(str(user_id))
     try:
         auth_state, session_file = await auth_manager.submit_2fa_password(user_id, req.password)
         return {
@@ -76,6 +84,8 @@ async def submit_2fa(req: Login2FASubmit, user_id: int = Depends(get_current_use
             "is_authorized": auth_state.is_authorized,
             "message": "Аккаунт успешно подключён!",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in submit-2fa: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

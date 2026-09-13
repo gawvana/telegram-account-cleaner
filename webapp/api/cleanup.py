@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from services.cleanup_service import cleanup_service
 from telegram_client.models import ChatType, CleanupPlan
+from utils.rate_limiter import cleanup_rate_limiter
 from webapp.api.auth import get_current_user_id
 from webapp.schemas import CleanupStartRequest
 from utils.logger import logger
@@ -12,9 +13,39 @@ from utils.logger import logger
 router = APIRouter(prefix="/cleanup", tags=["Cleanup"])
 
 
+@router.post("/run")
+async def run_cleanup_job(req: CleanupStartRequest, user_id: int = Depends(get_current_user_id)):
+    """Executes cleanup job synchronously and returns summary metrics directly."""
+    await cleanup_rate_limiter.check(str(user_id))
+    target_enums = []
+    for t_str in req.target_types:
+        try:
+            target_enums.append(ChatType(t_str.upper()))
+        except ValueError:
+            pass
+
+    plan = CleanupPlan(
+        is_max_clean=req.is_max_clean,
+        is_smart_clean=req.is_smart_clean,
+        target_types=target_enums,
+        target_chat_ids=req.target_chat_ids,
+        dry_run=req.dry_run,
+    )
+
+    try:
+        result = await cleanup_service.run_cleanup(user_id, plan)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Cleanup execution failed for {user_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 @router.post("/start")
 async def start_cleanup_job(req: CleanupStartRequest, user_id: int = Depends(get_current_user_id)):
     """Initiates an asynchronous cleanup job for the user."""
+    await cleanup_rate_limiter.check(str(user_id))
     # Convert string types to ChatType enum
     target_enums = []
     for t_str in req.target_types:

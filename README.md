@@ -78,7 +78,7 @@ Copy `.env.example` to `.env`:
 
 ```bash
 # Telegram Bot
-BOT_TOKEN=8929093343:AAGH9bw1I7VN-aSrMZQHBRbQ_0A0tvixIHI
+BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
 WEBHOOK_SECRET_TOKEN=your-random-webhook-secret-token
 
 # Telegram MTProto (Default Telegram Desktop credentials)
@@ -86,7 +86,7 @@ API_ID=2040
 API_HASH=b1844dd0f62ee8e35e54135eab32ce24
 
 # Security & Secrets
-ENCRYPTION_MASTER_KEY=4P_lwcFkEzHYBLpAPHCZRxRGdKA7GOBGC4dZixj9QcY=
+ENCRYPTION_MASTER_KEY=your-32-byte-base64-fernet-key
 JWT_SECRET=your-secure-jwt-signing-secret
 
 # URLs & Storage

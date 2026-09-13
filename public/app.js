@@ -278,6 +278,56 @@ function setupEventListeners() {
   document.getElementById("btnViewAllHistory")?.addEventListener("click", () => navigateTo("history"));
   document.getElementById("btnStartScanFromDialogs")?.addEventListener("click", () => navigateTo("scan"));
 
+  // Additional Action Buttons
+  document.getElementById("btnWhyScore")?.addEventListener("click", () => {
+    showToast("Индекс чистоты рассчитывается от 0 до 100 на основе активности: базовые 100 баллов за вычетом спам-ботов, неактивных каналов и с учётом защиты Whitelist.", "info", 6000);
+  });
+  document.getElementById("btnRefreshDialogs")?.addEventListener("click", async () => {
+    showToast("Обновление списка диалогов...", "info");
+    await loadDialogs();
+  });
+  document.getElementById("btnGoToDialogs")?.addEventListener("click", () => navigateTo("dialogs"));
+  document.getElementById("btnGoToSmartClean")?.addEventListener("click", () => navigateTo("smartclean"));
+  document.getElementById("btnSelectAllRecs")?.addEventListener("click", () => {
+    const checkboxes = document.querySelectorAll("#smartCleanList input[type='checkbox']");
+    const allChecked = Array.from(checkboxes).every((cb) => cb.checked);
+    checkboxes.forEach((cb) => (cb.checked = !allChecked));
+    showToast(!allChecked ? "Все рекомендации выбраны" : "Выбор снят", "info");
+  });
+  document.getElementById("btnExportCsv")?.addEventListener("click", async () => {
+    try {
+      const headers = {};
+      if (state.initData) headers["Authorization"] = `tma ${state.initData}`;
+      const res = await fetch("/api/history/export/csv", { headers });
+      if (!res.ok) throw new Error("Ошибка скачивания CSV");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `clin_history_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("История экспортирована в CSV", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+  document.getElementById("btnExportManifest")?.addEventListener("click", async () => {
+    try {
+      const res = await apiFetch("/settings/rejoin-manifest");
+      const blob = new Blob([JSON.stringify(res, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `clin_rejoin_manifest_${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("Rejoin Manifest сохранён", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
   // Deep Clean Modal & Hold-to-Confirm
   const btnActionDeepClean = document.getElementById("btnActionDeepClean");
   const deepCleanModal = document.getElementById("deepCleanModal");

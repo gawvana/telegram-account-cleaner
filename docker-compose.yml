@@ -3,7 +3,7 @@ version: "3.8"
 services:
   bot:
     build: .
-    container_name: cleaner_bot
+    container_name: clin_bot
     restart: unless-stopped
     command: python main.py
     env_file: .env
@@ -18,7 +18,7 @@ services:
 
   webapp:
     build: .
-    container_name: cleaner_webapp
+    container_name: clin_webapp
     restart: unless-stopped
     command: uvicorn webapp_server:app --host 0.0.0.0 --port 8080
     env_file: .env

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from services.support_service import support_service
+from utils.rate_limiter import support_rate_limiter
 from webapp.api.auth import get_current_user_id
 from utils.logger import logger
 
@@ -41,6 +42,7 @@ async def create_ticket(
     user_id: int = Depends(get_current_user_id),
 ):
     """Creates a new support ticket and sends initial message."""
+    await support_rate_limiter.check(str(user_id))
     ticket = await support_service.create_ticket(
         telegram_id=user_id,
         category=body.category,
