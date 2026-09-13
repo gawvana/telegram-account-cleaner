@@ -14,20 +14,39 @@ class Database:
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or settings.DATABASE_PATH
+        self._initialized = False
 
     @asynccontextmanager
     async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
         """Async context manager for SQLite connections with row factory configured."""
+        if not self._initialized:
+            await self.init_db()
+        db_parent = Path(self.db_path).parent
+        if db_parent and str(db_parent) != ".":
+            db_parent.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(self.db_path) as conn:
             conn.row_factory = aiosqlite.Row
             await conn.execute("PRAGMA foreign_keys = ON;")
-            await conn.execute("PRAGMA journal_mode = WAL;")
+            try:
+                await conn.execute("PRAGMA journal_mode = WAL;")
+            except Exception:
+                pass
             yield conn
 
     async def init_db(self) -> None:
         """Initializes all database tables and indexes."""
+        self._initialized = True
         logger.info(f"Initializing database at: {self.db_path}")
-        async with self.get_connection() as conn:
+        db_parent = Path(self.db_path).parent
+        if db_parent and str(db_parent) != ".":
+            db_parent.mkdir(parents=True, exist_ok=True)
+        async with aiosqlite.connect(self.db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            await conn.execute("PRAGMA foreign_keys = ON;")
+            try:
+                await conn.execute("PRAGMA journal_mode = WAL;")
+            except Exception:
+                pass
             await conn.executescript(
                 """
                 -- Users

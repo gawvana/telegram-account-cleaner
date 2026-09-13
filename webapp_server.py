@@ -5,6 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import Update
+
+from bot.handlers import router as bot_router
 from config import settings
 from database import db
 from services.scheduler_service import scheduler_service
@@ -15,6 +22,10 @@ from webapp.api.scan import router as scan_router
 from webapp.api.settings import router as settings_router
 from utils.logger import logger
 
+# Initialize Dispatcher for processing webhook updates
+bot_dp = Dispatcher(storage=MemoryStorage())
+bot_dp.include_router(bot_router)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,6 +35,17 @@ async def lifespan(app: FastAPI):
     if settings.SCHEDULER_ENABLED:
         scheduler_service.start()
         await scheduler_service.sync_all_schedules()
+
+    # Auto-register webhook in Vercel / production if configured
+    if settings.BOT_TOKEN and settings.WEBAPP_URL and "vercel.app" in settings.WEBAPP_URL:
+        try:
+            webhook_url = f"{settings.WEBAPP_URL.rstrip('/')}/api/webhook"
+            async with Bot(token=settings.BOT_TOKEN) as b:
+                await b.set_webhook(url=webhook_url, drop_pending_updates=False)
+                logger.info(f"Telegram Bot webhook registered: {webhook_url}")
+        except Exception as e:
+            logger.warning(f"Could not automatically set webhook on startup: {e}")
+
     yield
     # Shutdown
     logger.info("Shutting down FastAPI WebApp Server...")
@@ -62,6 +84,69 @@ if static_path.exists():
     @app.get("/")
     async def serve_index():
         return FileResponse(static_path / "index.html")
+
+
+# Telegram Bot Webhook Integration
+@app.post("/api/webhook")
+async def telegram_webhook(request: Request):
+    if not settings.BOT_TOKEN:
+        return {"ok": False, "error": "BOT_TOKEN not configured"}
+    try:
+        data = await request.json()
+        async with Bot(
+            token=settings.BOT_TOKEN,
+            default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
+        ) as bot:
+            update = Update.model_validate(data, context={"bot": bot})
+            await bot_dp.feed_update(bot=bot, update=update)
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"Error handling Telegram webhook: {e}", exc_info=True)
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/setup-webhook")
+async def setup_webhook():
+    if not settings.BOT_TOKEN:
+        return {"ok": False, "error": "BOT_TOKEN not configured"}
+    webhook_url = f"{settings.WEBAPP_URL.rstrip('/')}/api/webhook"
+    async with Bot(token=settings.BOT_TOKEN) as bot:
+        res = await bot.set_webhook(
+            url=webhook_url,
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query"],
+        )
+        info = await bot.get_webhook_info()
+        return {
+            "ok": True,
+            "webhook_url": webhook_url,
+            "set_webhook_result": res,
+            "webhook_info": {
+                "url": info.url,
+                "has_custom_certificate": info.has_custom_certificate,
+                "pending_update_count": info.pending_update_count,
+                "last_error_date": info.last_error_date,
+                "last_error_message": info.last_error_message,
+            },
+        }
+
+
+@app.get("/api/webhook-info")
+async def webhook_info():
+    if not settings.BOT_TOKEN:
+        return {"ok": False, "error": "BOT_TOKEN not configured"}
+    async with Bot(token=settings.BOT_TOKEN) as bot:
+        info = await bot.get_webhook_info()
+        return {
+            "ok": True,
+            "webhook_info": {
+                "url": info.url,
+                "has_custom_certificate": info.has_custom_certificate,
+                "pending_update_count": info.pending_update_count,
+                "last_error_date": info.last_error_date,
+                "last_error_message": info.last_error_message,
+            },
+        }
 
 
 @app.get("/health")
