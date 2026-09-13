@@ -95,6 +95,10 @@ class EntityInfoDTO(BaseModel):
 
 class ScanResult(BaseModel):
     total_dialogs: int = 0
+    private_chats: int = 0
+    bot_chats: int = 0
+    group_chats: int = 0
+    channel_chats: int = 0
     private_count: int = 0
     bots_count: int = 0
     groups_count: int = 0

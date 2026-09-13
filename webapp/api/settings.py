@@ -18,11 +18,13 @@ router = APIRouter(tags=["Settings, Whitelist & Backup"])
 # ---------------- WHITELIST ---------------- #
 
 @router.get("/whitelist")
+@router.get("/settings/whitelist")
 async def get_whitelist(user_id: int = Depends(get_current_user_id)):
     return await whitelist_service.list_whitelist(user_id)
 
 
 @router.post("/whitelist")
+@router.post("/settings/whitelist")
 async def add_whitelist_item(req: WhitelistItemCreate, user_id: int = Depends(get_current_user_id)):
     success = await whitelist_service.add_to_whitelist(
         telegram_id=user_id,
@@ -37,6 +39,7 @@ async def add_whitelist_item(req: WhitelistItemCreate, user_id: int = Depends(ge
 
 
 @router.delete("/whitelist/{chat_id}")
+@router.delete("/settings/whitelist/{chat_id}")
 async def remove_whitelist_item(chat_id: int, user_id: int = Depends(get_current_user_id)):
     removed = await whitelist_service.remove_from_whitelist(user_id, chat_id)
     if not removed:
@@ -45,17 +48,19 @@ async def remove_whitelist_item(chat_id: int, user_id: int = Depends(get_current
 
 
 @router.get("/whitelist/export")
+@router.get("/settings/whitelist/export")
 async def export_whitelist_items(user_id: int = Depends(get_current_user_id)):
     return await whitelist_service.export_whitelist(user_id)
 
 
 @router.post("/whitelist/import")
+@router.post("/settings/whitelist/import")
 async def import_whitelist_items(req: WhitelistImportRequest, user_id: int = Depends(get_current_user_id)):
-    imported = await whitelist_service.import_whitelist(user_id, req.items)
-    return {"success": True, "imported_count": imported}
+    imported_count = await whitelist_service.import_whitelist(user_id, req.items)
+    return {"success": True, "imported_count": imported_count}
 
 
-# ---------------- SETTINGS & SCHEDULES ---------------- #
+# ---------------- SETTINGS ---------------- #
 
 @router.get("/settings")
 async def get_user_settings(user_id: int = Depends(get_current_user_id)):
@@ -68,10 +73,13 @@ async def get_user_settings(user_id: int = Depends(get_current_user_id)):
 
 
 @router.post("/settings")
+@router.post("/settings/schedule")
 async def update_user_settings(req: SettingsUpdateRequest, user_id: int = Depends(get_current_user_id)):
     updates = []
     params = []
     for field, val in req.model_dump(exclude_unset=True).items():
+        if isinstance(val, bool):
+            val = 1 if val else 0
         updates.append(f"{field} = ?")
         params.append(val)
 
@@ -86,7 +94,8 @@ async def update_user_settings(req: SettingsUpdateRequest, user_id: int = Depend
 
         # If scheduler setting changed, re-sync user schedule
         if req.auto_clean_enabled is not None:
-            if req.auto_clean_enabled == 1:
+            enabled_val = int(req.auto_clean_enabled)
+            if enabled_val == 1:
                 scheduler_service.schedule_user_job(
                     telegram_id=user_id,
                     frequency=req.auto_clean_frequency or "weekly",
@@ -100,6 +109,7 @@ async def update_user_settings(req: SettingsUpdateRequest, user_id: int = Depend
 # ---------------- HYGIENE SCORE ---------------- #
 
 @router.get("/hygiene-score")
+@router.get("/settings/hygiene-score")
 async def get_hygiene_score(user_id: int = Depends(get_current_user_id)):
     current = await hygiene_score_service.get_current_score(user_id)
     history = await hygiene_score_service.get_history(user_id)
@@ -109,16 +119,19 @@ async def get_hygiene_score(user_id: int = Depends(get_current_user_id)):
 # ---------------- REJOIN MANIFEST & BACKUP ---------------- #
 
 @router.get("/rejoin-manifest")
+@router.get("/settings/rejoin-manifest")
 async def get_rejoin_manifest(user_id: int = Depends(get_current_user_id)):
     return await backup_service.get_rejoin_manifest(user_id)
 
 
 @router.get("/backup/export")
-async def export_all_backup(user_id: int = Depends(get_current_user_id)):
+@router.get("/settings/backup/export")
+async def export_full_backup(user_id: int = Depends(get_current_user_id)):
     return await backup_service.export_full_backup(user_id)
 
 
 @router.post("/backup/import")
-async def import_all_backup(payload: Dict[str, Any], user_id: int = Depends(get_current_user_id)):
-    result = await backup_service.import_backup(user_id, payload)
-    return {"success": True, "result": result}
+@router.post("/settings/backup/import")
+async def import_full_backup(data: Dict[str, Any], user_id: int = Depends(get_current_user_id)):
+    success = await backup_service.import_full_backup(user_id, data)
+    return {"success": success}

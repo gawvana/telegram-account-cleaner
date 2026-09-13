@@ -312,11 +312,52 @@ function setupEventListeners() {
   document.getElementById("btnGoToDialogs")?.addEventListener("click", () => navigateTo("dialogs"));
   document.getElementById("btnGoToSmartClean")?.addEventListener("click", () => navigateTo("smartclean"));
   document.getElementById("btnSelectAllRecs")?.addEventListener("click", () => {
-    const checkboxes = document.querySelectorAll("#smartCleanList input[type='checkbox']");
+    const checkboxes = document.querySelectorAll("#recommendationsList input[type='checkbox']");
     const allChecked = Array.from(checkboxes).every((cb) => cb.checked);
     checkboxes.forEach((cb) => (cb.checked = !allChecked));
     showToast(!allChecked ? "Все рекомендации выбраны" : "Выбор снят", "info");
   });
+
+  // Smart Clean Batch Execution
+  document.getElementById("btnExecuteSmartClean")?.addEventListener("click", async () => {
+    const recs = state.dialogs.filter(
+      (d) => !d.is_whitelisted && (d.recommended || (d.heuristics && d.heuristics.recommended_for_cleanup))
+    );
+    if (recs.length === 0) {
+      showToast("Нет рекомендаций для очистки", "info");
+      return;
+    }
+
+    if (!confirm(`Очистить все рекомендованные диалоги (${recs.length} шт.)?`)) return;
+
+    const btn = document.getElementById("btnExecuteSmartClean");
+    if (btn) btn.disabled = true;
+
+    try {
+      showToast(`Очистка ${recs.length} диалогов...`, "info");
+      const res = await apiFetch("/cleanup/run", {
+        method: "POST",
+        body: JSON.stringify({
+          target_chat_ids: recs.map((r) => Number(r.chat_id)),
+          dry_run: false,
+          is_smart_clean: true,
+        }),
+      });
+
+      showToast(`Smart Clean завершён: обработано ${res.processed ?? recs.length} диалогов`, "success");
+      const cleanedIds = new Set(recs.map((r) => Number(r.chat_id)));
+      state.dialogs = state.dialogs.filter((d) => !cleanedIds.has(Number(d.chat_id)));
+
+      renderDialogsList();
+      loadSmartCleanRecommendations();
+      await loadDashboardData();
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
   document.getElementById("btnExportCsv")?.addEventListener("click", async () => {
     try {
       const headers = {};
@@ -337,7 +378,7 @@ function setupEventListeners() {
   });
   document.getElementById("btnExportManifest")?.addEventListener("click", async () => {
     try {
-      const res = await apiFetch("/settings/rejoin-manifest");
+      const res = await apiFetch("/rejoin-manifest");
       const blob = new Blob([JSON.stringify(res, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -372,10 +413,17 @@ function setupEventListeners() {
     });
   }
 
-  // 3-Second Hold Logic
+  // 3-Second Hold Logic (Hardened against duplicate mobile events)
   if (btnHoldDeepClean && holdProgressFill) {
-    const startHold = () => {
+    let isHolding = false;
+
+    const startHold = (e) => {
+      if (isHolding) return;
+      isHolding = true;
+      if (e && e.cancelable && e.type === "touchstart") e.preventDefault();
+
       state.holdStart = Date.now();
+      clearInterval(state.holdTimer);
       state.holdTimer = setInterval(() => {
         const elapsed = Date.now() - state.holdStart;
         const pct = Math.min((elapsed / 3000) * 100, 100);
@@ -383,6 +431,7 @@ function setupEventListeners() {
 
         if (elapsed >= 3000) {
           clearInterval(state.holdTimer);
+          isHolding = false;
           deepCleanModal.style.display = "none";
           executeDeepClean();
         }
@@ -390,6 +439,8 @@ function setupEventListeners() {
     };
 
     const cancelHold = () => {
+      if (!isHolding) return;
+      isHolding = false;
       clearInterval(state.holdTimer);
       holdProgressFill.style.width = "0%";
     };
@@ -397,8 +448,9 @@ function setupEventListeners() {
     btnHoldDeepClean.addEventListener("mousedown", startHold);
     btnHoldDeepClean.addEventListener("mouseup", cancelHold);
     btnHoldDeepClean.addEventListener("mouseleave", cancelHold);
-    btnHoldDeepClean.addEventListener("touchstart", startHold);
+    btnHoldDeepClean.addEventListener("touchstart", startHold, { passive: false });
     btnHoldDeepClean.addEventListener("touchend", cancelHold);
+    btnHoldDeepClean.addEventListener("touchcancel", cancelHold);
   }
 
   // Scan Execution
@@ -486,11 +538,15 @@ function setupEventListeners() {
     if (!val) return;
 
     const num = parseInt(val, 10);
-    const body = isNaN(num) ? { username: val.replace("@", "") } : { chat_id: num };
-    if (inputTitle.value.trim()) body.title = inputTitle.value.trim();
+    if (isNaN(num)) {
+      showToast("Введите числовой Chat ID (например: -1001234567890)", "warning");
+      return;
+    }
+
+    const body = { chat_id: num, title: inputTitle.value.trim() || "" };
 
     try {
-      await apiFetch("/settings/whitelist", { method: "POST", body: JSON.stringify(body) });
+      await apiFetch("/whitelist", { method: "POST", body: JSON.stringify(body) });
       inputId.value = "";
       inputTitle.value = "";
       showToast("Добавлено в Белый список", "success");
@@ -502,7 +558,7 @@ function setupEventListeners() {
 
   document.getElementById("btnExportWl")?.addEventListener("click", async () => {
     try {
-      const res = await apiFetch("/settings/whitelist");
+      const res = await apiFetch("/whitelist/export");
       const blob = new Blob([JSON.stringify(res, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -527,18 +583,14 @@ function setupEventListeners() {
         const text = await file.text();
         const json = JSON.parse(text);
         const items = Array.isArray(json) ? json : json.items || [];
-        for (const item of items) {
-          if (item.chat_id) {
-            await apiFetch("/settings/whitelist", {
-              method: "POST",
-              body: JSON.stringify({ chat_id: item.chat_id, title: item.title }),
-            });
-          }
-        }
+        await apiFetch("/whitelist/import", {
+          method: "POST",
+          body: JSON.stringify({ items }),
+        });
         showToast("Whitelist успешно импортирован", "success");
         await loadWhitelist();
       } catch (err) {
-        showToast("Ошибка чтения файла Whitelist", "error");
+        showToast("Ошибка импорта Whitelist: " + err.message, "error");
       }
     });
   }
@@ -546,7 +598,7 @@ function setupEventListeners() {
   // Backup Export / Import
   document.getElementById("btnExportFullBackup")?.addEventListener("click", async () => {
     try {
-      const res = await apiFetch("/settings/backup/export");
+      const res = await apiFetch("/backup/export");
       const blob = new Blob([JSON.stringify(res, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -570,7 +622,7 @@ function setupEventListeners() {
       try {
         const text = await file.text();
         const json = JSON.parse(text);
-        await apiFetch("/settings/backup/import", {
+        await apiFetch("/backup/import", {
           method: "POST",
           body: JSON.stringify(json),
         });
@@ -581,6 +633,12 @@ function setupEventListeners() {
     });
   }
 
+  // Schedule Mode Warning Listener
+  document.getElementById("scheduleModeSelect")?.addEventListener("change", (e) => {
+    const warn = document.getElementById("scheduleModeWarning");
+    if (warn) warn.style.display = e.target.value === "auto" ? "block" : "none";
+  });
+
   // Schedule Save
   document.getElementById("btnSaveSchedule")?.addEventListener("click", async () => {
     const enabled = document.getElementById("scheduleEnableToggle").checked;
@@ -589,10 +647,10 @@ function setupEventListeners() {
     const mode = document.getElementById("scheduleModeSelect").value;
 
     try {
-      await apiFetch("/settings/schedule", {
+      await apiFetch("/settings", {
         method: "POST",
         body: JSON.stringify({
-          auto_clean_enabled: enabled,
+          auto_clean_enabled: enabled ? 1 : 0,
           auto_clean_frequency: freq,
           auto_clean_scope: scope,
           auto_clean_mode: mode,
@@ -728,10 +786,17 @@ async function loadDashboardData() {
     }
 
     if (res.current) {
-      document.getElementById("statPrivate").textContent = res.current.private_count ?? "--";
-      document.getElementById("statBots").textContent = res.current.bots_count ?? "--";
-      document.getElementById("statGroups").textContent = res.current.groups_count ?? "--";
-      document.getElementById("statChannels").textContent = res.current.channels_count ?? "--";
+      if (state.dialogs && state.dialogs.length > 0) {
+        document.getElementById("statPrivate").textContent = state.dialogs.filter((d) => d.chat_type === "private").length;
+        document.getElementById("statBots").textContent = state.dialogs.filter((d) => d.chat_type === "bot").length;
+        document.getElementById("statGroups").textContent = state.dialogs.filter((d) => d.chat_type === "group" || d.chat_type === "supergroup").length;
+        document.getElementById("statChannels").textContent = state.dialogs.filter((d) => d.chat_type === "channel").length;
+      } else {
+        document.getElementById("statPrivate").textContent = res.current.private_count ?? res.current.total_dialogs ?? "--";
+        document.getElementById("statBots").textContent = res.current.bots_count ?? "--";
+        document.getElementById("statGroups").textContent = res.current.groups_count ?? "--";
+        document.getElementById("statChannels").textContent = res.current.channels_count ?? "--";
+      }
     }
 
     // Load recent activity from history
@@ -745,11 +810,11 @@ async function loadDashboardData() {
           return `
           <div class="ticket-item">
             <div>
-              <span class="ticket-number-badge">CLIN-JOB-${j.id}</span>
+              <span class="ticket-number-badge">CLIN-JOB-${escapeHtml(j.id)}</span>
               <strong style="margin-left: 8px;">${escapeHtml(j.job_type)}</strong>
             </div>
             <div style="font-size: 12px; color: var(--clin-text-muted);">
-              ${isSuccess ? "✅ Успешно" : "❌ Ошибка"} (${j.processed_items || 0} обработано)
+              ${isSuccess ? "✅ Успешно" : "❌ " + escapeHtml(j.status)} (${Number(j.processed_items) || 0} обработано)
             </div>
           </div>
         `;
@@ -769,12 +834,20 @@ async function executeScan() {
   const pPct = document.getElementById("scanProgressPercent");
   const pFill = document.getElementById("scanProgressBarFill");
   const pCounts = document.getElementById("scanProgressCounts");
+  const btnScan = document.getElementById("btnExecuteScan");
 
+  const optPrivate = document.getElementById("scanOptPrivate")?.checked ?? true;
+  const optBots = document.getElementById("scanOptBots")?.checked ?? true;
+  const optGroups = document.getElementById("scanOptGroups")?.checked ?? true;
+  const optChannels = document.getElementById("scanOptChannels")?.checked ?? true;
+  const isDryRun = document.getElementById("scanDryRunSwitch")?.checked ?? true;
+
+  if (btnScan) btnScan.disabled = true;
   pCard.style.display = "block";
   rCard.style.display = "none";
   pFill.style.width = "10%";
   pPct.textContent = "10%";
-  pStatus.textContent = "Подключение к Telegram MTProto...";
+  pStatus.textContent = isDryRun ? "Симуляция сканирования MTProto..." : "Подключение к Telegram MTProto...";
 
   try {
     pFill.style.width = "40%";
@@ -782,11 +855,17 @@ async function executeScan() {
     pStatus.textContent = "Считывание диалогов и каналов...";
 
     const res = await apiFetch("/scan");
-    state.dialogs = res.items || [];
+    let items = res.items || [];
+    if (!optPrivate) items = items.filter((i) => i.chat_type !== "private");
+    if (!optBots) items = items.filter((i) => i.chat_type !== "bot");
+    if (!optGroups) items = items.filter((i) => i.chat_type !== "group" && i.chat_type !== "supergroup");
+    if (!optChannels) items = items.filter((i) => i.chat_type !== "channel");
+
+    state.dialogs = items;
 
     pFill.style.width = "100%";
     pPct.textContent = "100%";
-    pStatus.textContent = "Сканирование завершено!";
+    pStatus.textContent = isDryRun ? "Симуляция завершена!" : "Сканирование завершено!";
     pCounts.textContent = `Обработано: ${state.dialogs.length} / ${state.dialogs.length}`;
 
     setTimeout(() => {
@@ -794,20 +873,24 @@ async function executeScan() {
       rCard.style.display = "block";
       document.getElementById("scanResultTotalTitle").textContent = `Найдено: ${state.dialogs.length} диалогов`;
 
+      const s = res.summary || res || {};
       const breakdown = document.getElementById("scanResultsBreakdown");
       breakdown.innerHTML = `
-        <div class="stat-card"><strong>Личные:</strong> ${res.private_chats || 0}</div>
-        <div class="stat-card"><strong>Боты:</strong> ${res.bot_chats || 0}</div>
-        <div class="stat-card"><strong>Группы:</strong> ${res.group_chats || 0}</div>
-        <div class="stat-card"><strong>Каналы:</strong> ${res.channel_chats || 0}</div>
-        <div class="stat-card"><strong>В Whitelist:</strong> ${res.whitelisted_count || 0}</div>
-        <div class="stat-card"><strong>Рекомендовано:</strong> ${res.recommended_count || 0}</div>
+        <div class="stat-card"><strong>Личные:</strong> ${s.private_chats ?? s.private_count ?? 0}</div>
+        <div class="stat-card"><strong>Боты:</strong> ${s.bot_chats ?? s.bots_count ?? 0}</div>
+        <div class="stat-card"><strong>Группы:</strong> ${s.group_chats ?? s.groups_count ?? 0}</div>
+        <div class="stat-card"><strong>Каналы:</strong> ${s.channel_chats ?? s.channels_count ?? 0}</div>
+        <div class="stat-card"><strong>В Whitelist:</strong> ${s.whitelisted_count ?? 0}</div>
+        <div class="stat-card"><strong>Рекомендовано:</strong> ${s.recommended_count ?? 0}</div>
       `;
+      loadDashboardData();
       showToast(`Найдено ${state.dialogs.length} диалогов`, "success");
     }, 600);
   } catch (err) {
     pCard.style.display = "none";
     showToast(err.message, "error");
+  } finally {
+    if (btnScan) btnScan.disabled = false;
   }
 }
 
@@ -831,7 +914,7 @@ function renderDialogsList() {
   // Filter Chip Logic
   if (state.activeFilter !== "all") {
     if (state.activeFilter === "INACTIVE") {
-      filtered = filtered.filter((d) => d.heuristics && d.heuristics.inactive_days >= 60);
+      filtered = filtered.filter((d) => (d.inactive_days ?? d.heuristics?.inactive_days ?? 0) >= 60);
     } else {
       filtered = filtered.filter((d) => d.chat_type === state.activeFilter);
     }
@@ -862,6 +945,7 @@ function renderDialogsList() {
       const isChecked = state.selectedChatIds.has(d.chat_id);
       const initial = (d.title || "?").charAt(0).toUpperCase();
       const isWl = d.is_whitelisted;
+      const inactive = d.inactive_days ?? d.heuristics?.inactive_days ?? 0;
       return `
       <div class="dialog-item-row ${isChecked ? "selected" : ""}" data-chat-id="${d.chat_id}">
         <input type="checkbox" class="dialog-chk" data-chat-id="${d.chat_id}" ${isChecked ? "checked" : ""} />
@@ -874,7 +958,7 @@ function renderDialogsList() {
           <div class="dialog-meta-line">
             ${d.username ? `<span>@${escapeHtml(d.username)}</span>` : ""}
             ${isWl ? '<span class="badge-wl">⭐ Whitelist</span>' : ""}
-            ${d.heuristics && d.heuristics.inactive_days ? `<span>Неактивен: ${d.heuristics.inactive_days} дн.</span>` : ""}
+            ${inactive > 0 ? `<span>Неактивен: ${inactive} дн.</span>` : ""}
           </div>
         </div>
       </div>
@@ -907,14 +991,45 @@ function updateSelectionBar() {
   }
 }
 
-// 4. Smart Clean Recommendations
+// 4. Smart Clean Recommendations & Single Clean
+async function cleanSingleChat(chatId) {
+  const numericChatId = Number(chatId);
+  const target = state.dialogs.find((d) => Number(d.chat_id) === numericChatId);
+  const chatName = target ? target.title : `ID ${numericChatId}`;
+
+  if (!confirm(`Очистить и покинуть диалог "${chatName}"?`)) return;
+
+  try {
+    showToast(`Очистка "${chatName}"...`, "info");
+    const res = await apiFetch("/cleanup/run", {
+      method: "POST",
+      body: JSON.stringify({
+        target_chat_ids: [numericChatId],
+        dry_run: false,
+      }),
+    });
+
+    showToast(`Успешно очищено (${res.processed ?? 1} диалог)`, "success");
+
+    state.dialogs = state.dialogs.filter((d) => Number(d.chat_id) !== numericChatId);
+    state.selectedChatIds.delete(numericChatId);
+
+    renderDialogsList();
+    loadSmartCleanRecommendations();
+    await loadDashboardData();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+window.cleanSingleChat = cleanSingleChat;
+
 async function loadSmartCleanRecommendations() {
   if (state.dialogs.length === 0) {
     await loadDialogs();
   }
 
   const recs = state.dialogs.filter(
-    (d) => !d.is_whitelisted && d.heuristics && d.heuristics.recommended_for_cleanup
+    (d) => !d.is_whitelisted && (d.recommended || (d.heuristics && d.heuristics.recommended_for_cleanup))
   );
 
   const container = document.getElementById("recommendationsList");
@@ -941,7 +1056,7 @@ async function loadSmartCleanRecommendations() {
 
   container.innerHTML = recs
     .map((d) => {
-      const tags = d.heuristics.tags || [];
+      const tags = d.tags || (d.heuristics && d.heuristics.tags) || [];
       return `
       <div class="rec-item-card">
         <div class="rec-info">
@@ -960,11 +1075,11 @@ async function loadSmartCleanRecommendations() {
 // 5. Whitelist
 async function loadWhitelist() {
   try {
-    const res = await apiFetch("/settings/whitelist");
+    const res = await apiFetch("/whitelist");
     const container = document.getElementById("whitelistContainer");
     if (!container) return;
 
-    const items = res.whitelist || [];
+    const items = Array.isArray(res) ? res : (res.whitelist || []);
     if (items.length === 0) {
       container.innerHTML = '<div style="padding: 16px; color: var(--clin-text-muted);">Белый список пуст.</div>';
       return;
@@ -975,8 +1090,8 @@ async function loadWhitelist() {
         (i) => `
       <div class="table-row">
         <span>${escapeHtml(i.title || i.username || "Chat")}</span>
-        <span class="font-mono">${i.chat_id}</span>
-        <span>${i.added_at ? i.added_at.slice(0, 10) : "--"}</span>
+        <span class="font-mono">${escapeHtml(i.chat_id)}</span>
+        <span>${escapeHtml(i.added_at ? i.added_at.slice(0, 10) : "--")}</span>
         <button class="btn btn-ghost btn-sm text-danger" onclick="removeWlItem(${i.chat_id})">Удалить</button>
       </div>
     `
@@ -989,13 +1104,14 @@ async function loadWhitelist() {
 
 async function removeWlItem(chatId) {
   try {
-    await apiFetch(`/settings/whitelist/${chatId}`, { method: "DELETE" });
+    await apiFetch(`/whitelist/${chatId}`, { method: "DELETE" });
     showToast("Удалено из белого списка", "info");
     await loadWhitelist();
   } catch (err) {
     showToast(err.message, "error");
   }
 }
+window.removeWlItem = removeWlItem;
 
 // 6. History
 async function loadHistory() {
@@ -1018,17 +1134,64 @@ async function loadHistory() {
             (j) => `
           <div class="ticket-item">
             <div>
-              <span class="ticket-number-badge">CLIN-JOB-${j.id}</span>
+              <span class="ticket-number-badge">CLIN-JOB-${escapeHtml(j.id)}</span>
               <strong style="margin-left: 8px;">${escapeHtml(j.job_type)}</strong>
             </div>
             <div style="font-size: 12px; color: var(--clin-text-muted);">
-              ${j.status === "COMPLETED" ? "✅ Успешно" : "❌ " + j.status} | ${j.processed_items || 0} обработано
+              ${j.status === "COMPLETED" ? "✅ Успешно" : "❌ " + escapeHtml(j.status)} | ${Number(j.processed_items) || 0} обработано
             </div>
           </div>
         `
           )
           .join("");
       }
+    }
+
+    // Initialize Chart.js for Hygiene History
+    const scoreData = await apiFetch("/hygiene-score").catch(() => null);
+    const canvas = document.getElementById("hygieneHistoryChart");
+    if (canvas && scoreData && Array.isArray(scoreData.history) && scoreData.history.length > 0 && typeof Chart !== "undefined") {
+      const labels = scoreData.history.map((h) => (h.recorded_at ? h.recorded_at.slice(5, 16).replace("T", " ") : ""));
+      const dataPoints = scoreData.history.map((h) => h.score);
+
+      if (state.chartInstance) {
+        state.chartInstance.destroy();
+      }
+
+      state.chartInstance = new Chart(canvas, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label: "Hygiene Score",
+            data: dataPoints,
+            borderColor: "#00E887",
+            backgroundColor: "rgba(0, 232, 135, 0.12)",
+            tension: 0.35,
+            fill: true,
+            pointBackgroundColor: "#00E887",
+            pointRadius: 4,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { min: 0, max: 100, grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: "#9BA3AA" } },
+            x: { grid: { display: false }, ticks: { color: "#9BA3AA" } },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: "#191D20",
+              titleColor: "#F5F7F8",
+              bodyColor: "#00E887",
+              borderColor: "rgba(255,255,255,0.1)",
+              borderWidth: 1,
+            },
+          },
+        },
+      });
     }
   } catch (err) {
     console.warn("Could not load history:", err);
@@ -1039,11 +1202,15 @@ async function loadHistory() {
 async function loadSchedule() {
   try {
     const res = await apiFetch("/settings");
-    const s = res.settings || {};
-    document.getElementById("scheduleEnableToggle").checked = !!s.auto_clean_enabled;
+    const s = res.settings || res || {};
+    document.getElementById("scheduleEnableToggle").checked = Boolean(s.auto_clean_enabled);
     if (s.auto_clean_frequency) document.getElementById("scheduleFreqSelect").value = s.auto_clean_frequency;
     if (s.auto_clean_scope) document.getElementById("scheduleScopeSelect").value = s.auto_clean_scope;
-    if (s.auto_clean_mode) document.getElementById("scheduleModeSelect").value = s.auto_clean_mode;
+    if (s.auto_clean_mode) {
+      document.getElementById("scheduleModeSelect").value = s.auto_clean_mode;
+      const warn = document.getElementById("scheduleModeWarning");
+      if (warn) warn.style.display = s.auto_clean_mode === "auto" ? "block" : "none";
+    }
   } catch (err) {
     console.warn("Could not load schedule:", err);
   }
@@ -1167,10 +1334,10 @@ async function openTicketDetail(ticketNumber) {
 // 9. Settings
 async function loadSettingsData() {
   try {
-    const res = await apiFetch("/settings/rejoin-manifest");
+    const res = await apiFetch("/rejoin-manifest");
     const box = document.getElementById("manifestPreviewBox");
     if (box) {
-      const items = res.manifest || [];
+      const items = Array.isArray(res) ? res : (res.manifest || []);
       box.textContent = "";
       if (items.length === 0) {
         box.textContent = "Манифест пуст. При выходе из публичных каналов ссылки появятся здесь.";

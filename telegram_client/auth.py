@@ -67,16 +67,20 @@ class AuthManager:
 
     async def cleanup_expired(self) -> None:
         """Closes and purges transient clients exceeding AUTH_TIMEOUT_SECONDS."""
+        to_disconnect = []
         async with self._global_lock:
             expired_ids = [uid for uid, s in self._pending_sessions.items() if s.is_expired]
             for uid in expired_ids:
                 pending = self._pending_sessions.pop(uid, None)
                 if pending and pending.client and pending.client.is_connected():
-                    try:
-                        await pending.client.disconnect()
-                    except Exception:
-                        pass
+                    to_disconnect.append(pending.client)
                 logger.info(f"Purged expired transient auth session for user {uid}")
+
+        for client in to_disconnect:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
 
     async def get_auth_state(self, telegram_id: int) -> AuthState:
         """Determines the current precise AuthStatus for the user."""
@@ -189,13 +193,14 @@ class AuthManager:
             )
 
             try:
-                await client.connect()
-                sent_code = await client.send_code_request(clean_phone)
+                await asyncio.wait_for(client.connect(), timeout=30.0)
+                sent_code = await asyncio.wait_for(client.send_code_request(clean_phone), timeout=30.0)
 
+                old_client = None
                 async with self._global_lock:
                     old = self._pending_sessions.pop(telegram_id, None)
                     if old and old.client and old.client.is_connected():
-                        await old.client.disconnect()
+                        old_client = old.client
 
                     pending = PendingAuthSession(
                         telegram_id=telegram_id,
@@ -204,6 +209,12 @@ class AuthManager:
                         phone_code_hash=sent_code.phone_code_hash,
                     )
                     self._pending_sessions[telegram_id] = pending
+
+                if old_client:
+                    try:
+                        await old_client.disconnect()
+                    except Exception:
+                        pass
 
                 logger.info(f"Auth code requested successfully for user {telegram_id}")
                 return AuthState(
@@ -325,8 +336,10 @@ class AuthManager:
                 pending.status = AuthStatus.WAITING_FOR_2FA
                 raise AuthRequiredException("Неверный 2FA пароль.")
             except FloodWaitError as e:
+                pending.status = AuthStatus.WAITING_FOR_2FA
                 raise FloodWaitTimeoutException(e.seconds)
             except Exception as e:
+                pending.status = AuthStatus.WAITING_FOR_2FA
                 logger.error(f"Error checking 2FA password for {telegram_id}: {e}")
                 raise AuthRequiredException(f"Ошибка проверки пароля: {str(e)}")
 

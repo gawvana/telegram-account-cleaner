@@ -1,7 +1,7 @@
 import datetime
 from typing import Dict, List, Optional, Set
 from telethon import TelegramClient
-from telethon.tl.types import Channel, Chat, User
+from telethon.tl.types import Channel, Chat, User, ChannelForbidden, ChatForbidden
 
 from database import db
 from telegram_client.heuristics import heuristics_engine
@@ -69,7 +69,7 @@ class AccountScanner:
 
             chat_type = ChatType.OTHER
             is_creator = bool(getattr(entity, "creator", False))
-            is_admin = bool(getattr(entity, "admin_rights", None))
+            is_admin = bool(getattr(entity, "admin_rights", None) or getattr(entity, "admin", False))
 
             # Determine Chat Type
             if isinstance(entity, User):
@@ -89,12 +89,22 @@ class AccountScanner:
             elif isinstance(entity, Chat):
                 chat_type = ChatType.GROUP
                 group_count += 1
+            elif isinstance(entity, (ChannelForbidden, ChatForbidden)):
+                chat_type = ChatType.CHANNEL if isinstance(entity, ChannelForbidden) else ChatType.GROUP
+                inaccessible_count += 1
 
             # Check Whitelist
             is_whitelisted = chat_id in whitelisted_ids
 
             # Dynamic rule patterns check (e.g. "admin_groups")
             if not is_whitelisted and "admin_groups" in rules and (is_creator or is_admin):
+                is_whitelisted = True
+
+            # Hard safety protection: Saved Messages & Telegram Service notifications
+            is_self = bool(getattr(entity, "is_self", False)) or (isinstance(entity, User) and entity.id == telegram_id)
+            is_telegram_service = (chat_id == 777000) or (isinstance(entity, User) and entity.id == 777000)
+
+            if is_self or is_telegram_service:
                 is_whitelisted = True
 
             if is_whitelisted:
@@ -105,9 +115,15 @@ class AccountScanner:
             can_leave = True
             can_delete = True
 
+            if is_self or is_telegram_service:
+                can_delete = False
+                can_leave = False
+
             if is_creator and chat_type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
-                # Creator leaving a group/channel may require ownership transfer or deleting
+                # Creator cannot leave own group/channel; needs ownership transfer or deletion
                 requires_special_rights = True
+                can_leave = False
+                can_delete = False
                 special_rights_count += 1
 
             # Evaluate Heuristics (advisory only!)
@@ -158,6 +174,10 @@ class AccountScanner:
             bot_chats=bot_count,
             group_chats=group_count,
             channel_chats=channel_count,
+            private_count=private_count,
+            bots_count=bot_count,
+            groups_count=group_count,
+            channels_count=channel_count,
             whitelisted_count=whitelisted_count,
             recommended_count=recommended_count,
             actionable_count=actionable_count,

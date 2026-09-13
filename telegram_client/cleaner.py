@@ -57,6 +57,28 @@ class AccountCleaner:
                 error_message="Защищено белым списком (Whitelist)",
             )
 
+        # Creator / Special Rights Hard Safety Guarantee
+        if item.is_creator or item.requires_special_rights:
+            return CleanupItemResult(
+                chat_id=item.chat_id,
+                title=item.title,
+                chat_type=item.chat_type,
+                action="SKIP",
+                status="SKIPPED",
+                error_message="Защищено: вы являетесь создателем/владельцем этого диалога.",
+            )
+
+        # System Dialogs and Saved Messages Protection
+        if item.chat_id == 777000 or (not item.can_delete and not item.can_leave):
+            return CleanupItemResult(
+                chat_id=item.chat_id,
+                title=item.title,
+                chat_type=item.chat_type,
+                action="SKIP",
+                status="SKIPPED",
+                error_message="Защищено: системный диалог или Избранное.",
+            )
+
         if dry_run:
             action = "LEAVE" if item.chat_type in [ChatType.CHANNEL, ChatType.GROUP, ChatType.SUPERGROUP] else "DELETE"
             return CleanupItemResult(
@@ -256,8 +278,8 @@ class AccountCleaner:
                     error=(res.status == "ERROR"),
                 )
 
-            # Rate limit pause
-            if not dry_run:
+            # Rate limit pause only on executed operations
+            if not dry_run and res.status in ("SUCCESS", "ERROR"):
                 await asyncio.sleep(settings.RATE_LIMIT_DELAY)
 
         return results

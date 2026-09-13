@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -40,9 +40,9 @@ class CleanupStartRequest(BaseModel):
 
 
 class SettingsUpdateRequest(BaseModel):
-    auto_clean_enabled: Optional[int] = None
+    auto_clean_enabled: Optional[Union[int, bool]] = None
     auto_clean_frequency: Optional[str] = None
     auto_clean_scope: Optional[str] = None
     auto_clean_mode: Optional[str] = None
     dead_channel_days: Optional[int] = None
-    notifications_enabled: Optional[int] = None
+    notifications_enabled: Optional[Union[int, bool]] = None

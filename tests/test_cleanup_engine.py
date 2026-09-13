@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -89,3 +89,63 @@ async def test_cleanup_completed_with_warnings(tmp_path):
         row = await cursor.fetchone()
         assert row["status"] == "COMPLETED_WITH_WARNINGS"
         assert row["error_items"] == 2
+
+
+@pytest.mark.asyncio
+async def test_clean_single_item_creator_protection():
+    cleaner = AccountCleaner()
+    mock_client = MagicMock()
+
+    creator_item = DialogItem(
+        chat_id=555444333,
+        title="My Own Channel",
+        chat_type=ChatType.CHANNEL,
+        is_creator=True,
+        requires_special_rights=True,
+        is_whitelisted=False,
+    )
+
+    result = await cleaner.clean_single_item(mock_client, creator_item, dry_run=False)
+    assert result.status == "SKIPPED"
+    assert result.action == "SKIP"
+    assert "создателем" in result.error_message
+
+
+@pytest.mark.asyncio
+async def test_clean_single_item_system_and_self_protection():
+    cleaner = AccountCleaner()
+    mock_client = MagicMock()
+
+    service_item = DialogItem(
+        chat_id=777000,
+        title="Telegram Notifications",
+        chat_type=ChatType.PRIVATE,
+        can_delete=False,
+        can_leave=False,
+        is_whitelisted=False,
+    )
+
+    result = await cleaner.clean_single_item(mock_client, service_item, dry_run=False)
+    assert result.status == "SKIPPED"
+    assert result.action == "SKIP"
+    assert "системный диалог" in result.error_message
+
+
+def test_scan_result_attribute_contract():
+    from domain.models import ScanResult
+
+    sr = ScanResult(
+        total_dialogs=15,
+        private_chats=5,
+        bot_chats=3,
+        group_chats=4,
+        channel_chats=3,
+    )
+
+    # Verify both naming conventions are accessible
+    assert sr.private_chats == 5
+    assert sr.bot_chats == 3
+    assert sr.group_chats == 4
+    assert sr.channel_chats == 3
+    assert hasattr(sr, "private_count")
+    assert hasattr(sr, "bots_count")
