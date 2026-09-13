@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MAXIMUM ACCOUNT CLEANER</title>
+  <!-- Telegram WebApp JS SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Chart.js for History Visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Navigation Bar -->
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="logo-icon">🧹</span>
+        <div class="logo-title">
+          <h1>Cleaner Pro</h1>
+          <span class="version-tag">v2.0</span>
+        </div>
+      </div>
+      <div class="account-badge" id="accountStatusBadge">
+        <span class="status-indicator online"></span>
+        <span id="accountPhoneLabel">Подключение...</span>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-btn active" data-tab="dashboard">📊 Главная</button>
+      <button class="nav-btn" data-tab="preview">🔎 Диалоги</button>
+      <button class="nav-btn" data-tab="whitelist">⭐ Whitelist</button>
+      <button class="nav-btn" data-tab="history">📈 История</button>
+      <button class="nav-btn" data-tab="schedule">📅 График</button>
+      <button class="nav-btn" data-tab="settings">⚙️ Опции</button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="content">
+
+      <!-- SCREEN 1: DASHBOARD -->
+      <section id="tab-dashboard" class="tab-pane active">
+        <!-- Hygiene Score Card -->
+        <div class="card hygiene-card">
+          <div class="hygiene-info">
+            <h2>Hygiene Score</h2>
+            <p class="subtitle">Индекс чистоты и безопасности аккаунта</p>
+            <div class="score-details">
+              <span id="scoreText" class="score-value">--</span>
+              <span class="score-max">/ 100</span>
+            </div>
+          </div>
+          <div class="hygiene-gauge">
+            <div class="gauge-circle">
+              <span id="gaugeValue">--%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dialog Counter Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-icon">👤</span>
+            <div class="stat-data">
+              <span class="stat-num" id="statPrivate">--</span>
+              <span class="stat-label">Личные</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">🤖</span>
+            <div class="stat-data">
+              <span class="stat-num" id="statBots">--</span>
+              <span class="stat-label">Боты</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">👥</span>
+            <div class="stat-data">
+              <span class="stat-num" id="statGroups">--</span>
+              <span class="stat-label">Группы</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">📢</span>
+            <div class="stat-data">
+              <span class="stat-num" id="statChannels">--</span>
+              <span class="stat-label">Каналы</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions Card -->
+        <div class="card actions-card">
+          <h3>⚡ Быстрые действия</h3>
+          <div class="button-group">
+            <button class="btn btn-primary" id="btnScanNow">🔍 Сканировать аккаунт</button>
+            <button class="btn btn-warning" id="btnSmartClean">🧠 Smart Clean (Рекомендации)</button>
+          </div>
+          <div class="hold-button-container">
+            <button class="btn btn-danger btn-hold" id="btnMaxCleanHold">
+              <span>⚡ Удерживайте 3 сек: MAX CLEAN</span>
+              <div class="hold-progress" id="holdProgress"></div>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCREEN 2: SCAN & PREVIEW (DIALOGS) -->
+      <section id="tab-preview" class="tab-pane">
+        <div class="card preview-header-card">
+          <div class="search-bar">
+            <input type="text" id="dialogSearchInput" placeholder="Поиск по названию или @username..." />
+          </div>
+          <div class="filter-pills">
+            <button class="pill active" data-filter="all">Все</button>
+            <button class="pill" data-filter="recommended">🧠 Рекомендовано</button>
+            <button class="pill" data-filter="PRIVATE">👤 Личные</button>
+            <button class="pill" data-filter="BOT">🤖 Боты</button>
+            <button class="pill" data-filter="GROUP">👥 Группы</button>
+            <button class="pill" data-filter="CHANNEL">📢 Каналы</button>
+          </div>
+          <div class="selection-controls">
+            <label><input type="checkbox" id="selectAllCheckbox" /> Выбрать отображаемые</label>
+            <span id="selectedCountBadge">Выбрано: 0</span>
+          </div>
+        </div>
+
+        <!-- Dialog Items List -->
+        <div class="dialogs-list" id="dialogsContainer">
+          <div class="empty-state">Нажмите «Сканировать аккаунт», чтобы загрузить диалоги.</div>
+        </div>
+
+        <!-- Selected Cleanup Floating Bar -->
+        <div class="floating-action-bar" id="floatingBar" style="display: none;">
+          <span id="floatingSelectedText">Выбрано: 0</span>
+          <button class="btn btn-danger btn-sm" id="btnCleanSelected">Очистить выбранные</button>
+        </div>
+      </section>
+
+      <!-- SCREEN 3: WHITELIST MANAGER -->
+      <section id="tab-whitelist" class="tab-pane">
+        <div class="card">
+          <h3>⭐ Добавить в Whitelist</h3>
+          <p class="hint-text">Диалоги из белого списка никогда не затрагиваются очисткой.</p>
+          <div class="form-row">
+            <input type="number" id="wlChatId" placeholder="Chat ID (напр. -100123456789)" />
+            <input type="text" id="wlTitle" placeholder="Название (для заметки)" />
+          </div>
+          <button class="btn btn-primary" id="btnAddToWhitelist">➕ Добавить в список</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title-row">
+            <h3>Защищённые диалоги</h3>
+            <div class="btn-group-sm">
+              <button class="btn btn-outline btn-sm" id="btnExportWl">📤 Экспорт</button>
+              <button class="btn btn-outline btn-sm" id="btnImportWl">📥 Импорт</button>
+            </div>
+          </div>
+          <div class="whitelist-items" id="whitelistContainer">
+            <div class="empty-state">Белый список пуст.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCREEN 4: HISTORY & CHARTS -->
+      <section id="tab-history" class="tab-pane">
+        <div class="card">
+          <h3>📈 Динамика Hygiene Score</h3>
+          <div class="chart-container">
+            <canvas id="hygieneChart"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title-row">
+            <h3>История очисток</h3>
+            <button class="btn btn-outline btn-sm" id="btnExportHistoryCsv">📥 Скачать CSV</button>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table" id="historyTable">
+              <thead>
+                <tr>
+                  <th>Тип</th>
+                  <th>Статус</th>
+                  <th>Успех</th>
+                  <th>Время</th>
+                </tr>
+              </thead>
+              <tbody id="historyTbody">
+                <tr><td colspan="4" class="text-center">Загрузка истории...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCREEN 5: SCHEDULE -->
+      <section id="tab-schedule" class="tab-pane">
+        <div class="card">
+          <h3>📅 Автоочистка по расписанию</h3>
+          <p class="hint-text">
+            По умолчанию планировщик присылает <strong>dry-run отчёт</strong> без удаления данных.
+          </p>
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="schedEnabled" /> Включить автоочистку
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Частота:</label>
+            <select id="schedFrequency" class="form-control">
+              <option value="daily">Ежедневно (09:00 UTC)</option>
+              <option value="weekly" selected>Еженедельно (Пн, 09:00 UTC)</option>
+              <option value="monthly">Ежемесячно (1-е число, 09:00 UTC)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Область:</label>
+            <select id="schedScope" class="form-control">
+              <option value="smart" selected>🧠 Умные рекомендации</option>
+              <option value="bots">🤖 Только боты</option>
+              <option value="all">⚡ Все категории (MAX)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Режим безопасности:</label>
+            <select id="schedMode" class="form-control">
+              <option value="dry_run" selected>🧪 Только отчёт (Dry-Run, безопасно)</option>
+              <option value="auto">⚠️ Автоматическое удаление (требует подтверждения)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="btnSaveSchedule">Сохранить расписание</button>
+        </div>
+      </section>
+
+      <!-- SCREEN 6: SETTINGS & BACKUP -->
+      <section id="tab-settings" class="tab-pane">
+        <div class="card">
+          <h3>📎 Rejoin Manifest</h3>
+          <p class="hint-text">
+            Список публичных каналов и групп, из которых вы вышли с возможностью вернуться.
+          </p>
+          <button class="btn btn-outline" id="btnViewRejoinManifest">Просмотреть Rejoin Manifest</button>
+        </div>
+
+        <div class="card">
+          <h3>💾 Полный Backup данных</h3>
+          <p class="hint-text">Экспорт настроек, истории и белого списка в JSON.</p>
+          <div class="button-group">
+            <button class="btn btn-primary" id="btnExportFullBackup">📤 Экспорт JSON</button>
+            <button class="btn btn-outline" id="btnImportFullBackup">📥 Импорт JSON</button>
+          </div>
+          <input type="file" id="backupFileInput" style="display:none;" accept=".json" />
+        </div>
+
+        <div class="card">
+          <h3>🔐 Управление сессией</h3>
+          <button class="btn btn-outline btn-danger" id="btnLogoutSession">Выйти из аккаунта</button>
+        </div>
+      </section>
+
+      <!-- SCREEN 7: SECURE LOGIN MODAL -->
+      <section id="tab-login" class="tab-pane">
+        <div class="card login-card">
+          <h2>🔐 Безопасный вход</h2>
+          <p class="hint-text">
+            Ввод номера и кода происходит напрямую через WebApp в зашифрованном виде. Код подтверждения <strong>не попадает в историю чата</strong>.
+          </p>
+
+          <!-- Step 1: Phone -->
+          <div id="loginStepPhone">
+            <div class="form-group">
+              <label>Номер телефона:</label>
+              <input type="tel" id="loginPhoneInput" placeholder="+79991234567" class="form-control" />
+            </div>
+            <button class="btn btn-primary" id="btnRequestLoginCode">Запросить код</button>
+          </div>
+
+          <!-- Step 2: Code -->
+          <div id="loginStepCode" style="display: none;">
+            <div class="form-group">
+              <label>Код подтверждения из Telegram:</label>
+              <input type="password" id="loginCodeInput" placeholder="Код из 5-6 цифр" class="form-control" autocomplete="one-time-code" />
+            </div>
+            <button class="btn btn-primary" id="btnSubmitLoginCode">Войти</button>
+          </div>
+
+          <!-- Step 3: 2FA Password -->
+          <div id="loginStep2FA" style="display: none;">
+            <div class="form-group">
+              <label>Облачный пароль (2FA):</label>
+              <input type="password" id="login2FAPasswordInput" placeholder="Ваш 2FA пароль" class="form-control" />
+            </div>
+            <button class="btn btn-primary" id="btnSubmit2FA">Подтвердить 2FA</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCREEN 8: LIVE PROGRESS OVERLAY -->
+      <div id="progressModal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3 id="progressTitle">Выполняется очистка...</h3>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
+          </div>
+          <div class="progress-stats">
+            <span id="progressPercent">0%</span>
+            <span id="progressCounts">0 / 0</span>
+          </div>
+          <p class="current-item-text" id="progressCurrentItem">Подготовка...</p>
+          <button class="btn btn-danger" id="btnStopProgress">⛔ Остановить</button>
+        </div>
+      </div>
+
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

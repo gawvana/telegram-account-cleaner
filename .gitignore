@@ -1,0 +1,17 @@
+.env
+sessions/
+*.session
+*.session-journal
+cleaner.db
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+webapp/static/dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+Thumbs.db
+.vercel/

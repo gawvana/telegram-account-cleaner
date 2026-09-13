@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  bot:
+    build: .
+    container_name: cleaner_bot
+    restart: unless-stopped
+    command: python main.py
+    env_file: .env
+    volumes:
+      - session_data:/app/sessions
+      - ./cleaner.db:/app/cleaner.db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  webapp:
+    build: .
+    container_name: cleaner_webapp
+    restart: unless-stopped
+    command: uvicorn webapp_server:app --host 0.0.0.0 --port 8080
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - session_data:/app/sessions
+      - ./cleaner.db:/app/cleaner.db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  session_data:
