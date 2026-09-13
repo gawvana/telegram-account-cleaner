@@ -44,5 +44,11 @@ class SettingsUpdateRequest(BaseModel):
     auto_clean_frequency: Optional[str] = None
     auto_clean_scope: Optional[str] = None
     auto_clean_mode: Optional[str] = None
+
+
+class UserCredentialsUpdateRequest(BaseModel):
+    api_id: int = Field(..., gt=0, description="Telegram MTProto App API ID")
+    api_hash: str = Field(..., min_length=8, max_length=128, description="Telegram MTProto App API Hash")
+
     dead_channel_days: Optional[int] = None
     notifications_enabled: Optional[Union[int, bool]] = None

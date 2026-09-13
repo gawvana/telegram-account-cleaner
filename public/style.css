@@ -1715,3 +1715,128 @@ select option,
     flex-direction: column;
   }
 }
+
+/* User-Provided Credentials & Onboarding Styling */
+.onboarding-creds-box {
+  background-color: var(--clin-surface-secondary);
+  border: 1px solid var(--clin-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.input-password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.input-password-wrap input {
+  padding-right: 44px !important;
+  width: 100%;
+}
+
+.btn-toggle-pwd {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--clin-text-secondary);
+  cursor: pointer;
+  padding: 6px 8px;
+  font-size: 15px;
+  line-height: 1;
+  border-radius: var(--radius-xs);
+  transition: opacity 0.15s ease;
+}
+
+.btn-toggle-pwd:hover {
+  opacity: 0.8;
+}
+
+.field-security-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--clin-text-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.transparency-note {
+  font-size: 11px;
+  color: var(--clin-text-muted);
+  margin-top: 12px;
+  line-height: 1.4;
+}
+
+/* Guide Modal Steps */
+.guide-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 14px 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.guide-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  color: var(--clin-text);
+  line-height: 1.45;
+}
+
+.guide-step .step-num {
+  background-color: var(--clin-green);
+  color: #000000;
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.guide-step code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  color: var(--clin-green);
+}
+
+.link-external {
+  color: var(--clin-green);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+/* Mobile screen size adaptations (320px - 430px) */
+@media (max-width: 440px) {
+  .onboarding-creds-box {
+    padding: 12px;
+  }
+  .creds-actions-row {
+    flex-direction: column;
+  }
+  .creds-actions-row .btn {
+    width: 100%;
+  }
+  .guide-step {
+    gap: 8px;
+    font-size: 12px;
+  }
+  .creds-display-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+

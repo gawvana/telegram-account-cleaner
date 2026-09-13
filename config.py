@@ -36,29 +36,31 @@ class Settings(BaseSettings):
     BOT_TOKEN: str = Field(default="", description="Telegram Bot API Token")
     WEBHOOK_SECRET_TOKEN: str = Field(default="", description="Secret token for Telegram Webhook validation")
 
-    # Telegram MTProto Backend Credentials (never shown or requested from end users)
-    TELEGRAM_API_ID: Optional[int] = Field(default=None, description="Telegram MTProto API ID")
-    TELEGRAM_API_HASH: Optional[str] = Field(default=None, description="Telegram MTProto API Hash")
-    API_ID: Optional[int] = Field(default=None, description="Telegram API ID fallback")
-    API_HASH: Optional[str] = Field(default=None, description="Telegram API HASH fallback")
+    # Telegram MTProto Credentials:
+    # Each user provides their own API_ID and API_HASH via the UI (my.telegram.org -> API development tools).
+    # No global shared credentials or hardcoded fallback keys are used in production.
+    TELEGRAM_API_ID: Optional[int] = Field(default=None, description="Optional default API ID for testing")
+    TELEGRAM_API_HASH: Optional[str] = Field(default=None, description="Optional default API Hash for testing")
+    API_ID: Optional[int] = Field(default=None, description="Optional default API ID for testing")
+    API_HASH: Optional[str] = Field(default=None, description="Optional default API Hash for testing")
 
     @property
-    def effective_api_id(self) -> int:
+    def effective_api_id(self) -> Optional[int]:
         val = self.TELEGRAM_API_ID or self.API_ID
         if val and val != 0:
             return val
         if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
             return 12345
-        raise RuntimeError("TELEGRAM_API_ID is not configured in environment variables (.env / production env).")
+        return None
 
     @property
-    def effective_api_hash(self) -> str:
+    def effective_api_hash(self) -> Optional[str]:
         val = self.TELEGRAM_API_HASH or self.API_HASH
         if val and len(val) > 5:
             return val
         if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
             return "0123456789abcdef0123456789abcdef"
-        raise RuntimeError("TELEGRAM_API_HASH is not configured in environment variables (.env / production env).")
+        return None
 
     # Database & Storage (uses /tmp in serverless environment)
     DATABASE_PATH: str = Field(

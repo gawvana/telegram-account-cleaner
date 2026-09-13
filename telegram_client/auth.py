@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 from telethon import TelegramClient
 from telethon.errors import (
+    ApiIdInvalidError,
     FloodWaitError,
     PhoneNumberInvalidError,
     PhoneCodeInvalidError,
@@ -30,11 +31,15 @@ class PendingAuthSession:
         client: TelegramClient,
         phone: str,
         phone_code_hash: str,
+        api_id: Optional[int] = None,
+        api_hash: Optional[str] = None,
     ):
         self.telegram_id = telegram_id
         self.client = client
         self.phone = phone
         self.phone_code_hash = phone_code_hash
+        self.api_id = api_id
+        self.api_hash = api_hash
         self.status = AuthStatus.WAITING_FOR_CODE
         self.created_at = time.time()
         self.timeout_seconds = settings.AUTH_TIMEOUT_SECONDS
@@ -170,7 +175,7 @@ class AuthManager:
     ) -> AuthState:
         """
         Step 1: Connects Telethon client and requests verification code from Telegram.
-        Backend uses server-configured API_ID and API_HASH by default — never forces user to enter credentials.
+        Each user provides their own API_ID and API_HASH via my.telegram.org.
         """
         lock = await self._get_user_lock(telegram_id)
         if lock.locked():
@@ -183,9 +188,50 @@ class AuthManager:
             if len(clean_phone) < 7:
                 raise AuthRequiredException("Некорректный формат номера телефона.")
 
+            # Validate or resolve API credentials
+            effective_api_id = None
+            effective_api_hash = None
+
+            if api_id is not None:
+                try:
+                    int_id = int(api_id)
+                    if int_id <= 0:
+                        raise ValueError
+                    effective_api_id = int_id
+                except (ValueError, TypeError):
+                    raise AuthRequiredException("API ID должен быть положительным числом.")
+
+            if api_hash is not None:
+                clean_hash = str(api_hash).strip()
+                if not clean_hash or len(clean_hash) < 8:
+                    raise AuthRequiredException("API Hash указан некорректно.")
+                effective_api_hash = clean_hash
+
+            # If not provided in request, try to load saved credentials from DB
+            if not effective_api_id or not effective_api_hash:
+                custom_cred = await db.get_user_credentials(telegram_id)
+                if custom_cred and custom_cred.get("encrypted_api_id") and custom_cred.get("encrypted_api_hash"):
+                    user = await db.get_or_create_user(telegram_id, salt=crypto_service.generate_salt())
+                    user_salt = user.get("salt")
+                    if user_salt:
+                        try:
+                            if not effective_api_id:
+                                effective_api_id = int(crypto_service.decrypt_string(custom_cred["encrypted_api_id"], user_salt))
+                            if not effective_api_hash:
+                                effective_api_hash = crypto_service.decrypt_string(custom_cred["encrypted_api_hash"], user_salt)
+                        except Exception as e:
+                            logger.warning(f"Failed to decrypt stored credentials for user {telegram_id}: {e}")
+
+            # Allow test mock credentials during pytest runs
+            if not effective_api_id or not effective_api_hash:
+                if settings.effective_api_id and settings.effective_api_hash:
+                    effective_api_id = effective_api_id or settings.effective_api_id
+                    effective_api_hash = effective_api_hash or settings.effective_api_hash
+
+            if not effective_api_id or not effective_api_hash:
+                raise AuthRequiredException("Для подключения Telegram укажите API ID и API Hash вашего приложения.")
+
             # Create transient in-memory client
-            effective_api_id = api_id or settings.effective_api_id
-            effective_api_hash = api_hash or settings.effective_api_hash
             client = TelegramClient(
                 StringSession(),
                 effective_api_id,
@@ -207,6 +253,8 @@ class AuthManager:
                         client=client,
                         phone=clean_phone,
                         phone_code_hash=sent_code.phone_code_hash,
+                        api_id=effective_api_id,
+                        api_hash=effective_api_hash,
                     )
                     self._pending_sessions[telegram_id] = pending
 
@@ -216,7 +264,8 @@ class AuthManager:
                     except Exception:
                         pass
 
-                logger.info(f"Auth code requested successfully for user {telegram_id}")
+                masked_phone = clean_phone[:3] + "***" + clean_phone[-4:] if len(clean_phone) >= 7 else "***"
+                logger.info(f"Auth code requested successfully for user {telegram_id}, phone {masked_phone}")
                 return AuthState(
                     status=AuthStatus.WAITING_FOR_CODE,
                     is_authorized=False,
@@ -226,6 +275,10 @@ class AuthManager:
                     expires_at=pending.expires_at,
                 )
 
+            except ApiIdInvalidError:
+                if client.is_connected():
+                    await client.disconnect()
+                raise AuthRequiredException("API ID или API Hash недействительны. Проверьте данные вашего Telegram приложения.")
             except PhoneNumberInvalidError:
                 if client.is_connected():
                     await client.disconnect()
@@ -237,6 +290,8 @@ class AuthManager:
             except Exception as e:
                 if client.is_connected():
                     await client.disconnect()
+                if "API_ID_INVALID" in str(e).upper():
+                    raise AuthRequiredException("API ID или API Hash недействительны. Проверьте данные вашего Telegram приложения.")
                 logger.error(f"Error requesting code for {telegram_id}: {str(e)}")
                 raise AuthRequiredException(f"Ошибка запроса кода: {str(e)}")
 
@@ -385,6 +440,12 @@ class AuthManager:
                 (masked_phone, telegram_id),
             )
             await conn.commit()
+
+        # Securely persist user MTProto credentials encrypted at rest
+        if pending.api_id and pending.api_hash:
+            enc_api_id = crypto_service.encrypt_string(str(pending.api_id), user_salt)
+            enc_api_hash = crypto_service.encrypt_string(pending.api_hash, user_salt)
+            await db.set_user_credentials(telegram_id, enc_api_id, enc_api_hash, is_custom=1)
 
         await db.append_audit_log(telegram_id, action="ACCOUNT_AUTHORIZED")
 

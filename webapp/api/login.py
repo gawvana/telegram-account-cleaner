@@ -9,10 +9,31 @@ from utils.logger import logger
 router = APIRouter(prefix="/login", tags=["Secure Login"])
 
 
+from database import db
+from services.crypto_service import crypto_service
+
 @router.get("/status")
 async def get_auth_status(user_id: int = Depends(get_current_user_id)):
     """Checks whether the user currently has an active, authenticated session or pending flow."""
     auth_state = await auth_manager.get_auth_state(user_id)
+    custom_cred = await db.get_user_credentials(user_id)
+    has_credentials = bool(custom_cred and custom_cred.get("encrypted_api_id") and custom_cred.get("encrypted_api_hash"))
+    api_id_masked = None
+    api_hash_masked = None
+
+    if has_credentials:
+        api_hash_masked = "••••••••••••"
+        user = await db.get_user(user_id)
+        if user and user.get("salt"):
+            try:
+                dec_id = crypto_service.decrypt_string(custom_cred["encrypted_api_id"], user["salt"])
+                if len(dec_id) > 4:
+                    api_id_masked = "•" * (len(dec_id) - 4) + dec_id[-4:]
+                else:
+                    api_id_masked = "••••"
+            except Exception:
+                api_id_masked = "••••••••"
+
     return {
         "user_id": user_id,
         "is_authorized": auth_state.is_authorized,
@@ -20,6 +41,9 @@ async def get_auth_status(user_id: int = Depends(get_current_user_id)):
         "step": auth_state.step,
         "phone": auth_state.phone,
         "expires_at": auth_state.expires_at,
+        "has_credentials": has_credentials,
+        "api_id_masked": api_id_masked,
+        "api_hash_masked": api_hash_masked,
     }
 
 

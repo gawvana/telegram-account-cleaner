@@ -2,12 +2,14 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from database import db
 from services.backup_service import backup_service
+from services.crypto_service import crypto_service
 from services.hygiene_score_service import hygiene_score_service
 from services.scheduler_service import scheduler_service
 from services.whitelist_service import whitelist_service
 from webapp.api.auth import get_current_user_id
 from webapp.schemas import (
     SettingsUpdateRequest,
+    UserCredentialsUpdateRequest,
     WhitelistImportRequest,
     WhitelistItemCreate,
 )
@@ -135,3 +137,69 @@ async def export_full_backup(user_id: int = Depends(get_current_user_id)):
 async def import_full_backup(data: Dict[str, Any], user_id: int = Depends(get_current_user_id)):
     success = await backup_service.import_full_backup(user_id, data)
     return {"success": success}
+
+
+# ---------------- USER TELEGRAM API CREDENTIALS ---------------- #
+
+@router.get("/credentials")
+@router.get("/settings/credentials")
+async def get_user_credentials(user_id: int = Depends(get_current_user_id)):
+    """Returns masked credentials status for the current user. Never leaks plaintext api_hash."""
+    custom_cred = await db.get_user_credentials(user_id)
+    has_credentials = bool(custom_cred and custom_cred.get("encrypted_api_id") and custom_cred.get("encrypted_api_hash"))
+    api_id_masked = None
+    api_hash_masked = None
+
+    if has_credentials:
+        api_hash_masked = "••••••••••••"
+        user = await db.get_user(user_id)
+        if user and user.get("salt"):
+            try:
+                dec_id = crypto_service.decrypt_string(custom_cred["encrypted_api_id"], user["salt"])
+                if len(dec_id) > 4:
+                    api_id_masked = "•" * (len(dec_id) - 4) + dec_id[-4:]
+                else:
+                    api_id_masked = "••••"
+            except Exception:
+                api_id_masked = "••••••••"
+
+    return {
+        "has_credentials": has_credentials,
+        "api_id_masked": api_id_masked,
+        "api_hash_masked": api_hash_masked,
+    }
+
+
+@router.post("/credentials")
+@router.post("/settings/credentials")
+async def update_user_credentials(
+    req: UserCredentialsUpdateRequest,
+    user_id: int = Depends(get_current_user_id),
+):
+    """Securely updates and encrypts user's custom Telegram MTProto credentials."""
+    clean_hash = req.api_hash.strip()
+    if not clean_hash or len(clean_hash) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="API Hash указан некорректно. Проверьте данные вашего Telegram приложения.",
+        )
+
+    user = await db.get_or_create_user(user_id, salt=crypto_service.generate_salt())
+    user_salt = user.get("salt")
+    if not user_salt:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось инициализировать профиль безопасности пользователя.",
+        )
+
+    enc_id = crypto_service.encrypt_string(str(req.api_id), user_salt)
+    enc_hash = crypto_service.encrypt_string(clean_hash, user_salt)
+
+    await db.set_user_credentials(user_id, enc_id, enc_hash, is_custom=1)
+    await db.append_audit_log(user_id, action="CREDENTIALS_UPDATED")
+
+    return {
+        "success": True,
+        "message": "Данные Telegram API успешно обновлены и зашифрованы.",
+    }
+

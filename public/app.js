@@ -138,10 +138,10 @@ async function checkConsentAndAuth() {
     // 2. Check Auth Status
     const loginStatus = await apiFetch("/login/status").catch(() => null);
     if (loginStatus && loginStatus.is_authorized) {
-      updateAuthUI(true, loginStatus.phone);
+      updateAuthUI(true, loginStatus.phone, loginStatus.api_id_masked, loginStatus.api_hash_masked);
       await loadDashboardData();
     } else {
-      updateAuthUI(false);
+      updateAuthUI(false, "", loginStatus?.api_id_masked, loginStatus?.api_hash_masked);
     }
   } catch (err) {
     console.warn("Init status check notice:", err);
@@ -149,7 +149,7 @@ async function checkConsentAndAuth() {
   }
 }
 
-function updateAuthUI(isAuth, phone = "") {
+function updateAuthUI(isAuth, phone = "", apiIdMasked = "", apiHashMasked = "") {
   state.isAuthorized = isAuth;
   const dots = [document.getElementById("sidebarStatusDot"), document.getElementById("mobileStatusDot")];
   const labels = [document.getElementById("sidebarStatusText"), document.getElementById("mobileStatusText")];
@@ -168,9 +168,17 @@ function updateAuthUI(isAuth, phone = "") {
   const formBox = document.getElementById("loginFormContainer");
   const profileBadge = document.getElementById("settingsConnectionBadge");
   const profilePhone = document.getElementById("settingsUserPhone");
+  const banner = document.getElementById("dashboardDisconnectedBanner");
+  const credsCard = document.getElementById("settingsApiCredentialsCard");
+  const apiIdDisplay = document.getElementById("settingsApiIdDisplay");
+  const apiHashDisplay = document.getElementById("settingsApiHashDisplay");
 
   if (isAuth) {
     if (formBox) formBox.style.display = "none";
+    if (banner) banner.style.display = "none";
+    if (credsCard) credsCard.style.display = "block";
+    if (apiIdDisplay) apiIdDisplay.textContent = apiIdMasked || "••••••••";
+    if (apiHashDisplay) apiHashDisplay.textContent = apiHashMasked || "••••••••••";
     if (profileBadge) {
       profileBadge.className = "profile-status text-success";
       profileBadge.textContent = "● Сессия активна (MTProto)";
@@ -178,10 +186,21 @@ function updateAuthUI(isAuth, phone = "") {
     if (profilePhone) profilePhone.textContent = `Телефон: ${phone || "Скрыт"}`;
   } else {
     if (formBox) formBox.style.display = "block";
+    if (banner) banner.style.display = "block";
+    if (credsCard) credsCard.style.display = "none";
     if (profileBadge) {
       profileBadge.className = "profile-status text-danger";
       profileBadge.textContent = "○ Не подключён";
     }
+    // Show Step 1 onboarding
+    const stepCreds = document.getElementById("loginCredsStep");
+    const stepPhone = document.getElementById("loginPhoneStep");
+    const stepCode = document.getElementById("loginCodeStep");
+    const step2fa = document.getElementById("login2faStep");
+    if (stepCreds) stepCreds.style.display = "block";
+    if (stepPhone) stepPhone.style.display = "none";
+    if (stepCode) stepCode.style.display = "none";
+    if (step2fa) step2fa.style.display = "none";
   }
 }
 
@@ -712,56 +731,208 @@ function setupEventListeners() {
     }
   });
 
-  // Phone Auth Triggers
-  document.getElementById("btnSendAuthCode")?.addEventListener("click", async () => {
-    const phone = document.getElementById("loginPhoneInput").value.trim();
-    if (!phone) return;
-    try {
-      await apiFetch("/login/send-code", {
-        method: "POST",
-        body: JSON.stringify({ phone }),
-      });
-      document.getElementById("loginCodeStep").style.display = "block";
-      showToast("Код отправлен в Telegram", "success");
-    } catch (err) {
-      showToast(err.message, "error");
+  // Dashboard Connect Banner Trigger
+  document.getElementById("btnGoToConnect")?.addEventListener("click", () => {
+    navigateTo("settings");
+    document.getElementById("loginFormContainer")?.scrollIntoView({ behavior: "smooth" });
+  });
+
+  // Password Visibility Toggles
+  document.getElementById("btnToggleApiHash")?.addEventListener("click", () => {
+    const input = document.getElementById("loginApiHashInput");
+    const btn = document.getElementById("btnToggleApiHash");
+    if (input && btn) {
+      const isPwd = input.type === "password";
+      input.type = isPwd ? "text" : "password";
+      btn.textContent = isPwd ? "🙈" : "👁️";
     }
   });
 
+  document.getElementById("btnToggleChangeApiHash")?.addEventListener("click", () => {
+    const input = document.getElementById("changeApiHashInput");
+    const btn = document.getElementById("btnToggleChangeApiHash");
+    if (input && btn) {
+      const isPwd = input.type === "password";
+      input.type = isPwd ? "text" : "password";
+      btn.textContent = isPwd ? "🙈" : "👁️";
+    }
+  });
+
+  // API Guide Modal Triggers
+  document.getElementById("btnOpenApiGuide")?.addEventListener("click", () => {
+    const modal = document.getElementById("apiCredentialsGuideModal");
+    if (modal) modal.style.display = "flex";
+  });
+  document.getElementById("btnCloseApiGuideModal")?.addEventListener("click", () => {
+    const modal = document.getElementById("apiCredentialsGuideModal");
+    if (modal) modal.style.display = "none";
+  });
+  document.getElementById("btnAckApiGuide")?.addEventListener("click", () => {
+    const modal = document.getElementById("apiCredentialsGuideModal");
+    if (modal) modal.style.display = "none";
+  });
+
+  // Onboarding Step 1 -> Step 2
+  document.getElementById("btnProceedToPhone")?.addEventListener("click", () => {
+    const apiIdVal = document.getElementById("loginApiIdInput")?.value.trim();
+    const apiHashVal = document.getElementById("loginApiHashInput")?.value.trim();
+
+    if (!apiIdVal || parseInt(apiIdVal, 10) <= 0) {
+      showToast("Введите корректный числовой API ID", "warning");
+      return;
+    }
+    if (!apiHashVal || apiHashVal.length < 8) {
+      showToast("Введите корректный API Hash приложения (32 знака)", "warning");
+      return;
+    }
+
+    const credsStep = document.getElementById("loginCredsStep");
+    const phoneStep = document.getElementById("loginPhoneStep");
+    if (credsStep) credsStep.style.display = "none";
+    if (phoneStep) phoneStep.style.display = "block";
+  });
+
+  document.getElementById("btnBackToCreds")?.addEventListener("click", () => {
+    const credsStep = document.getElementById("loginCredsStep");
+    const phoneStep = document.getElementById("loginPhoneStep");
+    if (phoneStep) phoneStep.style.display = "none";
+    if (credsStep) credsStep.style.display = "block";
+  });
+
+  // Send Auth Code (Step 2)
+  document.getElementById("btnSendAuthCode")?.addEventListener("click", async () => {
+    const phone = document.getElementById("loginPhoneInput")?.value.trim();
+    const apiIdVal = document.getElementById("loginApiIdInput")?.value.trim();
+    const apiHashVal = document.getElementById("loginApiHashInput")?.value.trim();
+
+    if (!phone) {
+      showToast("Введите номер телефона", "warning");
+      return;
+    }
+
+    const body = { phone };
+    if (apiIdVal) body.api_id = parseInt(apiIdVal, 10);
+    if (apiHashVal) body.api_hash = apiHashVal;
+
+    const btn = document.getElementById("btnSendAuthCode");
+    if (btn) btn.disabled = true;
+
+    try {
+      showToast("Отправка запроса в Telegram...", "info");
+      await apiFetch("/login/send-code", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      document.getElementById("loginPhoneStep").style.display = "none";
+      document.getElementById("loginCodeStep").style.display = "block";
+      showToast("Код подтверждения отправлен в ваш Telegram", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  // Verify Auth Code (Step 3)
   document.getElementById("btnVerifyAuthCode")?.addEventListener("click", async () => {
-    const code = document.getElementById("loginCodeInput").value.trim();
+    const code = document.getElementById("loginCodeInput")?.value.trim();
     if (!code) return;
+
+    const btn = document.getElementById("btnVerifyAuthCode");
+    if (btn) btn.disabled = true;
+
     try {
       const res = await apiFetch("/login/verify-code", {
         method: "POST",
         body: JSON.stringify({ code }),
       });
       if (res.step === "2FA") {
+        document.getElementById("loginCodeStep").style.display = "none";
         document.getElementById("login2faStep").style.display = "block";
-        showToast("Требуется 2FA пароль", "info");
+        showToast("Требуется 2FA облачный пароль", "info");
       } else if (res.is_authorized) {
-        showToast("Успешный вход в аккаунт!", "success");
+        showToast("Аккаунт Telegram успешно подключён!", "success");
+        // Clear transient inputs
+        if (document.getElementById("loginApiHashInput")) document.getElementById("loginApiHashInput").value = "";
+        if (document.getElementById("loginPhoneInput")) document.getElementById("loginPhoneInput").value = "";
+        if (document.getElementById("loginCodeInput")) document.getElementById("loginCodeInput").value = "";
         await checkConsentAndAuth();
       }
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
     }
   });
 
+  // Verify 2FA Password (Step 4)
   document.getElementById("btnVerify2fa")?.addEventListener("click", async () => {
-    const password = document.getElementById("login2faInput").value;
+    const password = document.getElementById("login2faInput")?.value;
     if (!password) return;
+
+    const btn = document.getElementById("btnVerify2fa");
+    if (btn) btn.disabled = true;
+
     try {
       const res = await apiFetch("/login/verify-2fa", {
         method: "POST",
         body: JSON.stringify({ password }),
       });
       if (res.is_authorized) {
-        showToast("Успешный вход в аккаунт!", "success");
+        showToast("Аккаунт Telegram успешно подключён!", "success");
+        if (document.getElementById("loginApiHashInput")) document.getElementById("loginApiHashInput").value = "";
+        if (document.getElementById("login2faInput")) document.getElementById("login2faInput").value = "";
         await checkConsentAndAuth();
       }
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  // Change Credentials Modal & Save
+  document.getElementById("btnOpenChangeCredsModal")?.addEventListener("click", () => {
+    document.getElementById("changeCredentialsModal").style.display = "flex";
+  });
+  document.getElementById("btnCloseChangeCredsModal")?.addEventListener("click", () => {
+    document.getElementById("changeCredentialsModal").style.display = "none";
+  });
+  document.getElementById("btnCancelChangeCreds")?.addEventListener("click", () => {
+    document.getElementById("changeCredentialsModal").style.display = "none";
+  });
+  document.getElementById("btnSaveChangeCreds")?.addEventListener("click", async () => {
+    const apiIdVal = document.getElementById("changeApiIdInput")?.value.trim();
+    const apiHashVal = document.getElementById("changeApiHashInput")?.value.trim();
+
+    if (!apiIdVal || parseInt(apiIdVal, 10) <= 0) {
+      showToast("Введите корректный числовой API ID", "warning");
+      return;
+    }
+    if (!apiHashVal || apiHashVal.length < 8) {
+      showToast("Введите корректный API Hash (32 знака)", "warning");
+      return;
+    }
+
+    const btn = document.getElementById("btnSaveChangeCreds");
+    if (btn) btn.disabled = true;
+
+    try {
+      await apiFetch("/settings/credentials", {
+        method: "POST",
+        body: JSON.stringify({
+          api_id: parseInt(apiIdVal, 10),
+          api_hash: apiHashVal,
+        }),
+      });
+      showToast("Данные Telegram API обновлены", "success");
+      document.getElementById("changeCredentialsModal").style.display = "none";
+      if (document.getElementById("changeApiHashInput")) document.getElementById("changeApiHashInput").value = "";
+      await checkConsentAndAuth();
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      if (btn) btn.disabled = false;
     }
   });
 }

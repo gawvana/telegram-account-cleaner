@@ -117,7 +117,7 @@ async def cmd_support(message: Message):
     text = (
         "💬 **Служба поддержки CLIN**\n\n"
         "Возникли сложности или нашли баг? Откройте раздел поддержки в Mini App, чтобы создать тикет с номером `CLIN-XXXXX`.\n\n"
-        "⚠️ **Безопасность**: Служба поддержки CLIN никогда не запрашивает коды из SMS или 2FA-пароли!"
+        "⚠️ **Безопасность**: Служба поддержки CLIN никогда не запрашивает API Hash, Telegram код, 2FA-пароль или session string!"
     )
     await message.answer(text, reply_markup=get_support_keyboard(lang))
 

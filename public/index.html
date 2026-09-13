@@ -107,6 +107,17 @@
             </div>
           </div>
 
+          <!-- Disconnected Alert Banner -->
+          <div class="card disconnected-banner-card" id="dashboardDisconnectedBanner" style="display: none; margin-bottom: 16px; border: 1px solid rgba(0, 232, 135, 0.3); background: rgba(0, 232, 135, 0.05); padding: 14px 16px;">
+            <div class="banner-content" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <div class="banner-text">
+                <h4 style="color: var(--clin-green); margin-bottom: 4px; font-size: 14px;">Telegram-аккаунт не подключён</h4>
+                <p style="font-size: 12px; color: var(--clin-text-muted); margin: 0;">Укажите данные вашего приложения (API ID и Hash) для безопасного подключения через MTProto.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" id="btnGoToConnect">Подключить</button>
+            </div>
+          </div>
+
           <!-- Account Health Gauge Card -->
           <div class="dashboard-hero-card">
             <div class="gauge-container">
@@ -583,28 +594,81 @@
               </div>
             </div>
 
-            <!-- Login Form if disconnected -->
+            <!-- Login & Onboarding Form if disconnected -->
             <div id="loginFormContainer" style="display: none; margin-top: 16px;">
-              <p class="form-instruction">Для подключения аккаунта введите номер телефона в международном формате:</p>
-              <div class="form-row">
-                <input type="text" id="loginPhoneInput" placeholder="+79991234567" />
-                <button class="btn btn-primary" id="btnSendAuthCode">Получить код</button>
+              <!-- Step 1: Telegram API Credentials -->
+              <div class="onboarding-creds-box" id="loginCredsStep">
+                <div class="onboarding-header" style="margin-bottom: 12px;">
+                  <h4 class="onboarding-title" style="margin: 0 0 6px 0; font-size: 15px; color: var(--clin-text);">Подключение Telegram</h4>
+                  <p class="form-instruction" style="margin: 0; font-size: 13px; color: var(--clin-text-muted);">Чтобы CLIN мог подключить ваш аккаунт, укажите данные Telegram API вашего приложения.</p>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label class="input-label" for="loginApiIdInput">API ID</label>
+                  <input type="number" id="loginApiIdInput" class="form-input" placeholder="например, 12345678" />
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label class="input-label" for="loginApiHashInput">API Hash</label>
+                  <div class="input-password-wrap" style="position: relative; display: flex; align-items: center;">
+                    <input type="password" id="loginApiHashInput" class="form-input" placeholder="32-значный хэш приложения" autocomplete="off" style="padding-right: 42px; width: 100%;" />
+                    <button type="button" class="btn-toggle-pwd" id="btnToggleApiHash" title="Показать / скрыть API Hash" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--clin-text-muted); font-size: 16px; padding: 4px 8px;">👁️</button>
+                  </div>
+                  <span class="field-security-hint" style="display: block; font-size: 11px; color: var(--clin-text-muted); margin-top: 5px;">🔒 Никому не передавайте этот ключ. CLIN не запрашивает его через поддержку.</span>
+                </div>
+
+                <div class="creds-actions-row" style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-secondary btn-sm" id="btnOpenApiGuide">Где их взять?</button>
+                  <button type="button" class="btn btn-primary btn-sm" id="btnProceedToPhone">Продолжить</button>
+                </div>
+                <div class="transparency-note" style="font-size: 11px; color: var(--clin-text-muted); margin-top: 12px;">ℹ️ CLIN использует Telegram API для подключения вашего аккаунта.</div>
               </div>
 
-              <div id="loginCodeStep" style="display: none; margin-top: 12px;">
+              <!-- Step 2: Phone Input -->
+              <div id="loginPhoneStep" style="display: none; margin-top: 16px;">
+                <p class="form-instruction">Введите номер телефона в международном формате:</p>
+                <div class="form-row">
+                  <input type="tel" id="loginPhoneInput" class="form-input" placeholder="+79991234567" />
+                  <button class="btn btn-primary" id="btnSendAuthCode">Отправить код</button>
+                </div>
+                <button type="button" class="btn-text-link" id="btnBackToCreds" style="margin-top: 8px; font-size: 12px;">← Изменить API ID / Hash</button>
+              </div>
+
+              <!-- Step 3: Telegram Code -->
+              <div id="loginCodeStep" style="display: none; margin-top: 16px;">
                 <p class="form-instruction">Введите 5-значный код из Telegram:</p>
                 <div class="form-row">
-                  <input type="text" id="loginCodeInput" placeholder="Код подтверждения" />
-                  <button class="btn btn-primary" id="btnVerifyAuthCode">Войти</button>
+                  <input type="text" id="loginCodeInput" class="form-input" placeholder="Код подтверждения" />
+                  <button class="btn btn-primary" id="btnVerifyAuthCode">Подтвердить</button>
                 </div>
               </div>
 
-              <div id="login2faStep" style="display: none; margin-top: 12px;">
+              <!-- Step 4: 2FA Password -->
+              <div id="login2faStep" style="display: none; margin-top: 16px;">
                 <p class="form-instruction">Введите облачный 2FA пароль:</p>
                 <div class="form-row">
-                  <input type="password" id="login2faInput" placeholder="2FA Пароль" />
-                  <button class="btn btn-primary" id="btnVerify2fa">Подтвердить</button>
+                  <input type="password" id="login2faInput" class="form-input" placeholder="2FA Пароль" />
+                  <button class="btn btn-primary" id="btnVerify2fa">Войти</button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Telegram API Credentials in Settings -->
+          <div class="card settings-card" id="settingsApiCredentialsCard" style="display: none;">
+            <div class="card-header-row">
+              <h4 class="card-heading">Telegram API</h4>
+              <button class="btn btn-secondary btn-sm" id="btnOpenChangeCredsModal">Изменить</button>
+            </div>
+            <p class="card-desc">Данные вашего приложения MTProto. Зашифрованы алгоритмом Fernet (AES-128) с индивидуальной солью.</p>
+            <div class="creds-display-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
+              <div class="cred-row" style="background: var(--clin-surface); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--clin-border);">
+                <span class="cred-label" style="display: block; font-size: 11px; color: var(--clin-text-muted);">API ID:</span>
+                <span class="cred-value font-mono" id="settingsApiIdDisplay" style="font-size: 13px; font-weight: 600; color: var(--clin-text);">••••••••</span>
+              </div>
+              <div class="cred-row" style="background: var(--clin-surface); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--clin-border);">
+                <span class="cred-label" style="display: block; font-size: 11px; color: var(--clin-text-muted);">API Hash:</span>
+                <span class="cred-value font-mono" id="settingsApiHashDisplay" style="font-size: 13px; font-weight: 600; color: var(--clin-text);">••••••••••</span>
               </div>
             </div>
           </div>
@@ -752,6 +816,9 @@
     <div class="modal-overlay" id="createTicketModal" style="display: none;">
       <div class="modal-card">
         <h3>Новое обращение в поддержку</h3>
+        <div class="security-warning-box" style="margin-bottom: 12px; font-size: 12px; padding: 10px 14px; border-radius: 8px; background: rgba(255, 82, 104, 0.1); border: 1px solid rgba(255, 82, 104, 0.25); color: #FF8F9C;">
+          ⚠️ <strong>Безопасность:</strong> Никогда не отправляйте API Hash, Telegram код, 2FA пароль или session string в поддержку.
+        </div>
         <div class="form-group">
           <label class="input-label">Категория</label>
           <select class="form-select" id="ticketCategorySelect">
@@ -768,11 +835,78 @@
         </div>
         <div class="form-group">
           <label class="input-label">Подробное описание</label>
-          <textarea id="ticketDescriptionInput" rows="4" placeholder="Опишите, что произошло. Напоминаем: никогда не указывайте пароли или SMS-коды."></textarea>
+          <textarea id="ticketDescriptionInput" rows="4" placeholder="Опишите, что произошло. Напоминаем: никогда не указывайте API Hash, пароли или SMS-коды."></textarea>
         </div>
         <div class="modal-actions-row">
           <button class="btn btn-secondary" id="btnCancelCreateTicket">Отмена</button>
           <button class="btn btn-primary" id="btnSubmitCreateTicket">Отправить тикет</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GUIDE: HOW TO GET API ID & API HASH -->
+    <div class="modal-overlay" id="apiCredentialsGuideModal" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 16px;">Как получить API ID и API Hash</h3>
+          <button class="btn-close-modal" id="btnCloseApiGuideModal" style="background: none; border: none; font-size: 18px; color: var(--clin-text-muted); cursor: pointer;">✕</button>
+        </div>
+        <div class="guide-steps-list" style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; margin-bottom: 14px;">
+          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
+            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">1</span>
+            <div>Откройте официальный Telegram Core:<br><a href="https://my.telegram.org" target="_blank" rel="noopener noreferrer" style="color: var(--clin-green); text-decoration: underline;">https://my.telegram.org</a></div>
+          </div>
+          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
+            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">2</span>
+            <div>Войдите в свой Telegram-аккаунт.</div>
+          </div>
+          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
+            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">3</span>
+            <div>Откройте: <strong>API development tools</strong>.</div>
+          </div>
+          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
+            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">4</span>
+            <div>Создайте приложение, если его ещё нет.</div>
+          </div>
+          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
+            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">5</span>
+            <div>Telegram покажет:<br>• <strong>App api_id</strong><br>• <strong>App api_hash</strong></div>
+          </div>
+          <div class="guide-step" style="display: flex; gap: 10px; align-items: flex-start;">
+            <span class="step-num" style="background: var(--clin-green); color: #000; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;">6</span>
+            <div>Скопируйте оба значения в CLIN.</div>
+          </div>
+        </div>
+        <div class="security-warning-box" style="padding: 10px 12px; border-radius: 8px; background: rgba(255, 82, 104, 0.1); border: 1px solid rgba(255, 82, 104, 0.25); color: #FF8F9C; font-size: 12px;">
+          ⚠️ <strong>Важно:</strong> API Hash нельзя публиковать или отправлять другим людям. Не добавляйте его в GitHub, README или скриншоты.
+        </div>
+        <button class="btn btn-primary btn-block" id="btnAckApiGuide" style="margin-top: 14px;">Понятно</button>
+      </div>
+    </div>
+
+    <!-- CHANGE CREDENTIALS MODAL -->
+    <div class="modal-overlay" id="changeCredentialsModal" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 16px;">Изменение Telegram API</h3>
+          <button class="btn-close-modal" id="btnCloseChangeCredsModal" style="background: none; border: none; font-size: 18px; color: var(--clin-text-muted); cursor: pointer;">✕</button>
+        </div>
+        <p class="modal-desc" style="font-size: 13px; color: var(--clin-text-muted); margin-bottom: 14px;">Введите новые данные приложения из <a href="https://my.telegram.org" target="_blank" style="color: var(--clin-green);">my.telegram.org</a>. Ключи сохраняются локально в зашифрованном виде.</p>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="input-label" for="changeApiIdInput">API ID</label>
+          <input type="number" id="changeApiIdInput" class="form-input" placeholder="например, 12345678" />
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="input-label" for="changeApiHashInput">API Hash</label>
+          <div class="input-password-wrap" style="position: relative; display: flex; align-items: center;">
+            <input type="password" id="changeApiHashInput" class="form-input" placeholder="32-значный хэш" autocomplete="off" style="padding-right: 42px; width: 100%;" />
+            <button type="button" class="btn-toggle-pwd" id="btnToggleChangeApiHash" title="Показать / скрыть" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--clin-text-muted); font-size: 16px; padding: 4px 8px;">👁️</button>
+          </div>
+          <span class="field-security-hint" style="display: block; font-size: 11px; color: var(--clin-text-muted); margin-top: 5px;">🔒 Никому не передавайте этот ключ. CLIN не запрашивает его через поддержку.</span>
+        </div>
+        <div class="modal-actions-row" style="display: flex; gap: 10px; margin-top: 14px;">
+          <button class="btn btn-secondary" id="btnCancelChangeCreds">Отмена</button>
+          <button class="btn btn-primary" id="btnSaveChangeCreds">Сохранить</button>
         </div>
       </div>
     </div>

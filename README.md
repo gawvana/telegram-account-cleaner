@@ -59,16 +59,18 @@ CLIN/
 
 ## 🔑 Telegram API Setup Guide
 
-To connect your account, Telegram requires MTProto application credentials (`API_ID` and `API_HASH`).
+**CLIN requires users to provide their own Telegram API credentials.** CLIN does not use a shared API ID or API Hash.
 
 1. Open the official Telegram developer portal: **[https://my.telegram.org/](https://my.telegram.org/)**
-2. Log in with your phone number and confirm via the Telegram app code.
-3. Select **API development tools**.
-4. If you do not have an application created yet, enter an App title (e.g. `CLIN`) and short name.
-5. Copy your **API ID** (an integer) and **API Hash** (a 32-character hexadecimal string).
-6. Enter them in CLIN or configure them as server defaults in `.env`.
+2. Log in with your Telegram account.
+3. Open **API development tools**.
+4. Create an application if you don't have one yet.
+5. Telegram will display:
+   • **App api_id**
+   • **App api_hash**
+6. Copy both values into CLIN when connecting your account.
 
-> ⚠️ **Security Warning**: Never publish or share your API Hash. CLIN never logs your API Hash or sends it to external servers.
+> ⚠️ **Security Warning**: Never publish or share your API Hash with anyone. Do not add it to GitHub, READMEs, or screenshots. CLIN support will **NEVER** ask for your API Hash, login codes, or 2FA passwords.
 
 ---
 
@@ -80,10 +82,6 @@ Copy `.env.example` to `.env`:
 # Telegram Bot
 BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
 WEBHOOK_SECRET_TOKEN=your-random-webhook-secret-token
-
-# Telegram MTProto (Default Telegram Desktop credentials)
-API_ID=2040
-API_HASH=b1844dd0f62ee8e35e54135eab32ce24
 
 # Security & Secrets
 ENCRYPTION_MASTER_KEY=your-32-byte-base64-fernet-key

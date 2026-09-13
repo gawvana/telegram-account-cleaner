@@ -79,16 +79,26 @@ class ClientManager:
             logger.error(f"Failed to decrypt session for {telegram_id}: {e}")
             raise SessionCorruptedError("Не удалось расшифровать сессию. Возможно, изменился мастер-ключ.")
 
-        # Check for user custom credentials
+        # Check for user credentials encrypted at rest
         custom_cred = await db.get_user_credentials(telegram_id)
-        api_id = settings.effective_api_id
-        api_hash = settings.effective_api_hash
+        api_id = None
+        api_hash = None
         if custom_cred and custom_cred.get("encrypted_api_id") and custom_cred.get("encrypted_api_hash"):
             try:
-                api_id = int(crypto_service.decrypt_string(custom_cred["encrypted_api_id"], user_salt))
+                decrypted_api_id = crypto_service.decrypt_string(custom_cred["encrypted_api_id"], user_salt)
+                api_id = int(decrypted_api_id)
                 api_hash = crypto_service.decrypt_string(custom_cred["encrypted_api_hash"], user_salt)
             except Exception as e:
-                logger.warning(f"Failed to decrypt custom credentials for {telegram_id}: {e}")
+                logger.warning(f"Failed to decrypt credentials for user {telegram_id}: {e}")
+
+        # Only allow test credentials during pytest runs
+        if not api_id or not api_hash:
+            if settings.effective_api_id and settings.effective_api_hash:
+                api_id = settings.effective_api_id
+                api_hash = settings.effective_api_hash
+
+        if not api_id or not api_hash:
+            raise AuthRequiredException("Для повторного подключения введите API ID и API Hash.")
 
         client = TelegramClient(
             StringSession(decrypted_str),
