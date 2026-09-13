@@ -276,3 +276,79 @@ async def test_duplicate_auth_attempt_is_safe():
     finally:
         lock.release()
 
+
+@pytest.mark.asyncio
+async def test_auth_state_rolls_back_on_floodwait():
+    from telethon.errors import FloodWaitError
+    from telegram_client.exceptions import FloodWaitTimeoutException
+
+    auth_mgr = AuthManager()
+    user_id = 777888991
+
+    mock_client = MagicMock()
+    mock_client.sign_in = AsyncMock(side_effect=FloodWaitError(request=None, capture=0))
+    mock_client.sign_in.side_effect.seconds = 45
+
+    pending = PendingAuthSession(
+        telegram_id=user_id,
+        client=mock_client,
+        phone="+79991234567",
+        phone_code_hash="test_hash",
+    )
+    auth_mgr._pending_sessions[user_id] = pending
+
+    with pytest.raises(FloodWaitTimeoutException):
+        await asyncio.wait_for(auth_mgr.submit_auth_code(user_id, "12345"), timeout=5.0)
+
+    assert pending.status == AuthStatus.WAITING_FOR_CODE
+
+
+@pytest.mark.asyncio
+async def test_auth_state_rolls_back_on_rpc_error():
+    from telethon.errors import RPCError
+    from telegram_client.exceptions import AuthRequiredException
+
+    auth_mgr = AuthManager()
+    user_id = 777888992
+
+    mock_client = MagicMock()
+    mock_client.sign_in = AsyncMock(side_effect=RPCError(request=None, message="RPC_CALL_FAIL"))
+
+    pending = PendingAuthSession(
+        telegram_id=user_id,
+        client=mock_client,
+        phone="+79991234567",
+        phone_code_hash="test_hash",
+    )
+    auth_mgr._pending_sessions[user_id] = pending
+
+    with pytest.raises(AuthRequiredException):
+        await asyncio.wait_for(auth_mgr.submit_auth_code(user_id, "12345"), timeout=5.0)
+
+    assert pending.status == AuthStatus.WAITING_FOR_CODE
+
+
+@pytest.mark.asyncio
+async def test_auth_state_rolls_back_on_network_error():
+    from telegram_client.exceptions import AuthRequiredException
+
+    auth_mgr = AuthManager()
+    user_id = 777888993
+
+    mock_client = MagicMock()
+    mock_client.sign_in = AsyncMock(side_effect=ConnectionResetError("Connection lost"))
+
+    pending = PendingAuthSession(
+        telegram_id=user_id,
+        client=mock_client,
+        phone="+79991234567",
+        phone_code_hash="test_hash",
+    )
+    auth_mgr._pending_sessions[user_id] = pending
+
+    with pytest.raises(AuthRequiredException):
+        await asyncio.wait_for(auth_mgr.submit_auth_code(user_id, "12345"), timeout=5.0)
+
+    assert pending.status == AuthStatus.WAITING_FOR_CODE
+
+

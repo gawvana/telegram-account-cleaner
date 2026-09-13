@@ -30,6 +30,7 @@ async def test_database_initialization_and_migrations(tmp_path):
             "support_tickets",
             "ticket_messages",
             "user_credentials",
+            "rate_limits",
         }
         for table in expected_tables:
             assert table in tables, f"Expected table {table} missing from schema"
@@ -37,9 +38,9 @@ async def test_database_initialization_and_migrations(tmp_path):
         # Verify migrations recorded
         cur_mig = await conn.execute("SELECT version, name FROM schema_migrations ORDER BY version ASC")
         migrations = await cur_mig.fetchall()
-        assert len(migrations) == 5
+        assert len(migrations) == 6
         assert migrations[0]["version"] == 1
-        assert migrations[4]["version"] == 5
+        assert migrations[-1]["version"] == 6
 
 
 @pytest.mark.asyncio

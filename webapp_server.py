@@ -126,7 +126,6 @@ app.include_router(settings_router, prefix="/api")
 app.include_router(consent_router, prefix="/api")
 app.include_router(support_router, prefix="/api")
 app.include_router(diagnostics_router, prefix="/api")
-app.include_router(diagnostics_router)
 
 # Static files for Mini App
 public_path = Path(__file__).parent / "public"
@@ -138,6 +137,14 @@ if static_path.exists():
     @app.get("/")
     async def serve_index():
         return FileResponse(static_path / "index.html")
+
+    @app.get("/style.css")
+    async def serve_style():
+        return FileResponse(static_path / "style.css", media_type="text/css")
+
+    @app.get("/app.js")
+    async def serve_script():
+        return FileResponse(static_path / "app.js", media_type="application/javascript")
 
 
 # Telegram Bot Webhook Integration

@@ -46,18 +46,14 @@ class Settings(BaseSettings):
 
     @property
     def effective_api_id(self) -> Optional[int]:
-        val = self.TELEGRAM_API_ID or self.API_ID
-        if val and val != 0:
-            return val
+        """Strictly test-only fallback during automated pytest runs; production requires per-user credentials."""
         if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
             return 12345
         return None
 
     @property
     def effective_api_hash(self) -> Optional[str]:
-        val = self.TELEGRAM_API_HASH or self.API_HASH
-        if val and len(val) > 5:
-            return val
+        """Strictly test-only fallback during automated pytest runs; production requires per-user credentials."""
         if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
             return "0123456789abcdef0123456789abcdef"
         return None
@@ -116,7 +112,11 @@ class Settings(BaseSettings):
 
     def get_effective_jwt_secret(self) -> str:
         """Returns the configured JWT_SECRET or falls back to a deterministic hash of BOT_TOKEN / MASTER_KEY."""
-        if self.JWT_SECRET and self.JWT_SECRET != "telegram-account-cleaner-secret-key-change-in-prod":
+        insecure_keys = {
+            "telegram-account-cleaner-secret-key-change-in-prod",
+            "your_super_secret_jwt_key_change_in_production",
+        }
+        if self.JWT_SECRET and self.JWT_SECRET not in insecure_keys:
             return self.JWT_SECRET
         if self.ENCRYPTION_MASTER_KEY:
             import hashlib

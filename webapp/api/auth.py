@@ -5,7 +5,8 @@ import time
 import urllib.parse
 from typing import Any, Dict, Optional
 from fastapi import Header, HTTPException, status
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 
 from config import settings
 from utils.logger import logger
@@ -99,7 +100,7 @@ def decode_access_token(token: str) -> dict:
         secret = settings.get_effective_jwt_secret()
         payload = jwt.decode(token, secret, algorithms=[settings.JWT_ALGORITHM])
         return payload
-    except JWTError:
+    except PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 

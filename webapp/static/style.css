@@ -530,12 +530,48 @@ body {
   width: 100%;
 }
 
+.btn:active {
+  transform: scale(0.98);
+  opacity: 0.9;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--clin-green);
+  outline-offset: 2px;
+}
+
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
+.btn.is-loading {
+  position: relative;
+  pointer-events: none;
+  color: transparent !important;
+}
+
+.btn.is-loading::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  top: calc(50% - 7px);
+  left: calc(50% - 7px);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #00E887;
+  border-radius: 50%;
+  animation: clinSpin 0.65s linear infinite;
+}
+
+@keyframes clinSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* CLIN Liquid Glass Form Controls (Zero White Browser Defaults) */
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]),
 input[type="text"],
 input[type="password"],
 input[type="number"],
@@ -561,6 +597,20 @@ select,
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background-color: var(--clin-surface-tertiary, #0B0E10);
+}
+
+.form-input.has-success,
+input.has-success {
+  border-color: var(--clin-green);
+  box-shadow: 0 0 0 1px var(--clin-green);
 }
 
 /* Remove default number spin arrows */
@@ -2443,6 +2493,30 @@ select option,
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Desktop and Large Displays (1024px, 1280px, 1440px) */
+@media (min-width: 1024px) {
+  .content-area {
+    max-width: 1120px;
+    padding: 32px 40px 60px;
+  }
+  .stats-summary-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .content-area {
+    max-width: 1240px;
+    padding: 36px 48px 80px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .content-area {
+    max-width: 1380px;
   }
 }
 

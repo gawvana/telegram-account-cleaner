@@ -7,9 +7,12 @@ services:
     restart: unless-stopped
     command: python main.py
     env_file: .env
+    environment:
+      - DATABASE_PATH=/app/data/cleaner.db
+      - SCHEDULER_ENABLED=true
     volumes:
       - session_data:/app/sessions
-      - ./cleaner.db:/app/cleaner.db
+      - ./data:/app/data
     logging:
       driver: "json-file"
       options:
@@ -22,11 +25,14 @@ services:
     restart: unless-stopped
     command: uvicorn webapp_server:app --host 0.0.0.0 --port 8080
     env_file: .env
+    environment:
+      - DATABASE_PATH=/app/data/cleaner.db
+      - SCHEDULER_ENABLED=false
     ports:
       - "8080:8080"
     volumes:
       - session_data:/app/sessions
-      - ./cleaner.db:/app/cleaner.db
+      - ./data:/app/data
     logging:
       driver: "json-file"
       options:

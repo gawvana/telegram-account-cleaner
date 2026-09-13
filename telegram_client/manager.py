@@ -36,20 +36,26 @@ class ClientManager:
         return Path(settings.SESSION_DIR) / "users" / str(telegram_id)
 
     async def has_active_session(self, telegram_id: int) -> bool:
-        """Checks whether the user has a valid encrypted session on disk."""
+        """Checks whether the user has a valid encrypted session in DB or on disk."""
         async with db.get_connection() as conn:
             cursor = await conn.execute(
-                "SELECT session_path, is_active FROM sessions WHERE telegram_id = ?",
+                "SELECT session_path, session_data, is_active FROM sessions WHERE telegram_id = ?",
                 (telegram_id,),
             )
             row = await cursor.fetchone()
             if not row or not row["is_active"]:
                 return False
-            p = Path(row["session_path"])
-            return p.exists() and p.stat().st_size > 0
+            # Check DB stored session_data first
+            if "session_data" in row.keys() and row["session_data"] and len(row["session_data"]) > 0:
+                return True
+            # Fall back to disk file
+            if row["session_path"]:
+                p = Path(row["session_path"])
+                return p.exists() and p.stat().st_size > 0
+            return False
 
     async def load_client(self, telegram_id: int) -> TelegramClient:
-        """Decrypts session from disk into an in-memory Telethon client."""
+        """Decrypts session from database or disk into an in-memory Telethon client."""
         async with db.get_connection() as conn:
             user_cursor = await conn.execute(
                 "SELECT salt FROM users WHERE telegram_id = ?", (telegram_id,)
@@ -61,19 +67,24 @@ class ClientManager:
             user_salt = user_row["salt"]
 
             sess_cursor = await conn.execute(
-                "SELECT session_path, is_active FROM sessions WHERE telegram_id = ?",
+                "SELECT session_path, session_data, is_active FROM sessions WHERE telegram_id = ?",
                 (telegram_id,),
             )
             sess_row = await sess_cursor.fetchone()
             if not sess_row or not sess_row["is_active"]:
                 raise AuthRequiredException("Аккаунт не подключён. Пожалуйста, пройдите авторизацию.")
 
-            session_file = Path(sess_row["session_path"])
-            if not session_file.exists():
-                raise AuthRequiredException("Файл сессии не найден. Пройдите авторизацию заново.")
+            encrypted_data = None
+            if "session_data" in sess_row.keys() and sess_row["session_data"] and len(sess_row["session_data"]) > 0:
+                encrypted_data = sess_row["session_data"]
+            else:
+                session_file = Path(sess_row["session_path"]) if sess_row["session_path"] else None
+                if session_file and session_file.exists():
+                    encrypted_data = session_file.read_text(encoding="utf-8")
+                else:
+                    raise AuthRequiredException("Файл сессии не найден. Пройдите авторизацию заново.")
 
         try:
-            encrypted_data = session_file.read_text(encoding="utf-8")
             decrypted_str = crypto_service.decrypt_string(encrypted_data, user_salt)
         except Exception as e:
             logger.error(f"Failed to decrypt session for {telegram_id}: {e}")
@@ -174,7 +185,7 @@ class ClientManager:
                             logger.warning(f"Error securely shredding session file {target_path}: {e}")
 
                 await conn.execute(
-                    "UPDATE sessions SET is_active = 0 WHERE telegram_id = ?", (telegram_id,)
+                    "UPDATE sessions SET is_active = 0, session_data = NULL WHERE telegram_id = ?", (telegram_id,)
                 )
                 await conn.commit()
 

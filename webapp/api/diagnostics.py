@@ -27,10 +27,14 @@ _START_TIME = time.time()
 
 @router.get("", response_model=DiagnosticsResponse)
 @router.get("/", response_model=DiagnosticsResponse)
-async def get_system_diagnostics():
-    """Non-destructive diagnostic verification of backend, database, sessions, scheduler, and storage."""
+async def get_system_diagnostics(user_id: int = Depends(get_current_user_id)):
+    """Non-destructive diagnostic verification of backend, database, sessions, scheduler, and storage (Requires authentication)."""
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     overall_status = "healthy"
+
+    # Check if user is admin for detail levels
+    user = await db.get_user(user_id)
+    is_admin = bool(user and user.get("is_admin"))
 
     # 1. Backend Diagnostics
     uptime = round(time.time() - _START_TIME, 2)
@@ -88,9 +92,10 @@ async def get_system_diagnostics():
     db_latency = round((time.perf_counter() - t0) * 1000, 2)
     latest_migration = MIGRATIONS[-1][0] if MIGRATIONS else 0
 
+    display_db_path = db_path if is_admin else Path(db_path).name
     database_info = DatabaseDiagnostics(
         status=db_status,
-        path=db_path,
+        path=display_db_path,
         journal_mode=journal_mode,
         integrity_check=integrity,
         current_migration_version=applied_version,
@@ -132,9 +137,10 @@ async def get_system_diagnostics():
     elif not settings.ENCRYPTION_MASTER_KEY:
         session_status = "warning"
 
+    display_sess_path = str(sess_path) if is_admin else Path(sess_path).name
     session_info = SessionStoreDiagnostics(
         status=session_status,
-        directory=str(sess_path),
+        directory=display_sess_path,
         directory_exists=dir_exists,
         is_writable=is_writable,
         active_sessions_count=active_count,

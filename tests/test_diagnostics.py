@@ -10,9 +10,15 @@ def client():
     return TestClient(app)
 
 
-def test_diagnostics_endpoint_contract(client):
-    """Verifies that GET /api/diagnostics returns valid non-destructive system diagnostics."""
+def test_diagnostics_requires_authentication(client):
+    """Verifies that unauthenticated GET /api/diagnostics returns 401."""
     response = client.get("/api/diagnostics")
+    assert response.status_code == 401
+
+
+def test_diagnostics_endpoint_contract(client, auth_headers):
+    """Verifies that authenticated GET /api/diagnostics returns valid non-destructive system diagnostics with masked paths."""
+    response = client.get("/api/diagnostics", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
 

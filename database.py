@@ -228,12 +228,25 @@ CREATE INDEX IF NOT EXISTS idx_rejoin_manifest_user_left ON rejoin_manifest (tel
 CREATE INDEX IF NOT EXISTS idx_hygiene_user_id ON hygiene_score_history (telegram_id, id DESC);
 """
 
+MIGRATION_006_SESSION_DATA_AND_RATE_LIMITS = """
+-- Migration 006: Add session_data column to sessions table and persistent rate_limits table
+ALTER TABLE sessions ADD COLUMN session_data TEXT;
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    limiter_key TEXT NOT NULL,
+    timestamp REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rate_limits_key_ts ON rate_limits (limiter_key, timestamp);
+"""
+
 MIGRATIONS = [
     (1, "001_baseline_schema", MIGRATION_001_BASELINE),
     (2, "002_add_consents_table", MIGRATION_002_CONSENTS),
     (3, "003_add_support_tickets_system", MIGRATION_003_SUPPORT_TICKETS),
     (4, "004_add_user_credentials", MIGRATION_004_USER_CREDENTIALS),
     (5, "005_performance_indexes", MIGRATION_005_PERFORMANCE_INDEXES),
+    (6, "006_session_data_and_rate_limits", MIGRATION_006_SESSION_DATA_AND_RATE_LIMITS),
 ]
 
 
@@ -260,8 +273,8 @@ class Database:
             return "/tmp/cleaner.db"
         return self.db_path
 
-    async def _backup_database_file(self, target_path: str) -> None:
-        """Creates a timestamped snapshot of the database file before applying migrations."""
+    async def _backup_database_file(self, target_path: str, max_backups: int = 5) -> None:
+        """Creates a timestamped snapshot of the database file before applying migrations with automatic pruning."""
         p = Path(target_path)
         if not p.exists() or p.stat().st_size == 0:
             return
@@ -270,6 +283,20 @@ class Database:
             backup_path = p.with_suffix(f".bak_{ts}")
             shutil.copy2(p, backup_path)
             logger.info(f"Database pre-migration snapshot saved to: {backup_path}")
+
+            # Prune old backups to keep only max_backups
+            parent = p.parent
+            base_name = p.stem
+            all_backups = sorted(
+                parent.glob(f"{base_name}.bak_*"),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True,
+            )
+            for old_bak in all_backups[max_backups:]:
+                try:
+                    old_bak.unlink(missing_ok=True)
+                except Exception:
+                    pass
         except Exception as e:
             logger.warning(f"Could not create pre-migration snapshot: {e}")
 

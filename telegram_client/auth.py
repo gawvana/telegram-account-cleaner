@@ -352,8 +352,10 @@ class AuthManager:
                 await self._cancel_auth_locked(telegram_id)
                 raise AuthRequiredException("Срок действия кода истёк. Запросите код заново.")
             except FloodWaitError as e:
+                pending.status = AuthStatus.WAITING_FOR_CODE
                 raise FloodWaitTimeoutException(e.seconds)
             except Exception as e:
+                pending.status = AuthStatus.WAITING_FOR_CODE
                 logger.error(f"Error verifying code for {telegram_id}: {e}")
                 raise AuthRequiredException(f"Ошибка проверки кода: {str(e)}")
 
@@ -426,14 +428,15 @@ class AuthManager:
         async with db.get_connection() as conn:
             await conn.execute(
                 """
-                INSERT INTO sessions (telegram_id, session_path, is_active, updated_at)
-                VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+                INSERT INTO sessions (telegram_id, session_path, session_data, is_active, updated_at)
+                VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
                 ON CONFLICT(telegram_id) DO UPDATE SET
                     session_path = excluded.session_path,
+                    session_data = excluded.session_data,
                     is_active = 1,
                     updated_at = CURRENT_TIMESTAMP
                 """,
-                (telegram_id, str(session_file)),
+                (telegram_id, str(session_file), encrypted_session),
             )
             await conn.execute(
                 "UPDATE users SET phone = ? WHERE telegram_id = ?",

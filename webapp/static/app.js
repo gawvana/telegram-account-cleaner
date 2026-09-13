@@ -17,7 +17,10 @@ const state = {
   chartInstance: null,
   holdTimer: null,
   holdStart: null,
+  dashboardScore: 100,
 };
+
+const inFlightOps = new Set();
 
 // HTML Escaper for XSS Prevention
 function escapeHtml(str) {
@@ -338,9 +341,6 @@ function setupEventListeners() {
   document.getElementById("btnStartScanFromDialogs")?.addEventListener("click", () => navigateTo("scan"));
 
   // Additional Action Buttons
-  document.getElementById("btnWhyScore")?.addEventListener("click", () => {
-    showToast("Индекс чистоты рассчитывается от 0 до 100 на основе активности: базовые 100 баллов за вычетом спам-ботов, неактивных каналов и с учётом защиты Whitelist.", "info", 6000);
-  });
   document.getElementById("btnRefreshDialogs")?.addEventListener("click", async () => {
     showToast("Обновление списка диалогов...", "info");
     await loadDialogs();
@@ -544,11 +544,16 @@ function setupEventListeners() {
     }
   });
 
-  document.getElementById("btnSelectionDelete")?.addEventListener("click", async () => {
+  const btnSelDel = document.getElementById("btnSelectionDelete");
+  btnSelDel?.addEventListener("click", async () => {
     if (state.selectedChatIds.size === 0) return;
+    if (inFlightOps.has("batch_delete")) return;
     const count = state.selectedChatIds.size;
     if (!confirm(`Очистить выбранные диалоги (${count} шт.)?`)) return;
 
+    inFlightOps.add("batch_delete");
+    btnSelDel.disabled = true;
+    btnSelDel.classList.add("is-loading");
     try {
       const res = await apiFetch("/cleanup/run", {
         method: "POST",
@@ -560,9 +565,15 @@ function setupEventListeners() {
       showToast(`Очистка завершена: обработано ${res.processed}`, "success");
       state.selectedChatIds.clear();
       updateSelectionBar();
+      state.dialogs = []; // Invalidate stale cached dialogs
       await loadDialogs();
+      await loadDashboardData();
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
+      inFlightOps.delete("batch_delete");
+      btnSelDel.disabled = false;
+      btnSelDel.classList.remove("is-loading");
     }
   });
 
@@ -988,6 +999,7 @@ async function loadDashboardData() {
   try {
     const res = await apiFetch("/hygiene-score");
     const score = res.current ? res.current.score : 92;
+    state.dashboardScore = score;
     document.getElementById("dashboardScoreValue").textContent = score;
 
     // Update Circular Gauge
@@ -1213,11 +1225,15 @@ function updateSelectionBar() {
 // 4. Smart Clean Recommendations & Single Clean
 async function cleanSingleChat(chatId) {
   const numericChatId = Number(chatId);
+  const opKey = `clean_${numericChatId}`;
+  if (inFlightOps.has(opKey)) return;
+
   const target = state.dialogs.find((d) => Number(d.chat_id) === numericChatId);
   const chatName = target ? target.title : `ID ${numericChatId}`;
 
   if (!confirm(`Очистить и покинуть диалог "${chatName}"?`)) return;
 
+  inFlightOps.add(opKey);
   try {
     showToast(`Очистка "${chatName}"...`, "info");
     const res = await apiFetch("/cleanup/run", {
@@ -1238,6 +1254,8 @@ async function cleanSingleChat(chatId) {
     await loadDashboardData();
   } catch (err) {
     showToast(err.message, "error");
+  } finally {
+    inFlightOps.delete(opKey);
   }
 }
 window.cleanSingleChat = cleanSingleChat;
@@ -1322,12 +1340,19 @@ async function loadWhitelist() {
 }
 
 async function removeWlItem(chatId) {
+  const numericChatId = Number(chatId);
+  const opKey = `rm_wl_${numericChatId}`;
+  if (inFlightOps.has(opKey)) return;
+
+  inFlightOps.add(opKey);
   try {
-    await apiFetch(`/whitelist/${chatId}`, { method: "DELETE" });
+    await apiFetch(`/whitelist/${numericChatId}`, { method: "DELETE" });
     showToast("Удалено из белого списка", "info");
     await loadWhitelist();
   } catch (err) {
     showToast(err.message, "error");
+  } finally {
+    inFlightOps.delete(opKey);
   }
 }
 window.removeWlItem = removeWlItem;
@@ -1412,6 +1437,9 @@ async function loadHistory() {
         },
       });
     }
+
+    // Load Cryptographic Audit Timeline
+    await loadAuditTimeline();
   } catch (err) {
     console.warn("Could not load history:", err);
   }

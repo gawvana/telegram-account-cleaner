@@ -3,6 +3,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
+from config import is_serverless
 from services.cleanup_service import cleanup_service
 from telegram_client.models import ChatType, CleanupPlan
 from utils.rate_limiter import cleanup_rate_limiter
@@ -62,7 +63,13 @@ async def start_cleanup_job(req: CleanupStartRequest, user_id: int = Depends(get
         dry_run=req.dry_run,
     )
 
-    # Launch background task for execution
+    if is_serverless():
+        # In serverless microVMs (Vercel/Lambda), asynchronous background tasks are killed
+        # as soon as the response returns. Execute synchronously to ensure completion!
+        result = await cleanup_service.run_cleanup(user_id, plan)
+        return {"success": True, "message": "Очистка успешно выполнена", "result": result}
+
+    # Launch background task for execution in worker / container environments
     async def _execute_bg():
         try:
             await cleanup_service.run_cleanup(user_id, plan)
