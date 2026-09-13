@@ -3,30 +3,13 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand
 
 from bot.handlers import router as bot_router
+from bot.profile import setup_bot_profile
 from config import settings
 from database import db
 from services.scheduler_service import scheduler_service
 from utils.logger import logger
-
-
-async def register_bot_commands(bot: Bot) -> None:
-    commands = [
-        BotCommand(command="start", description="Запустить CLIN"),
-        BotCommand(command="help", description="Помощь и руководство"),
-        BotCommand(command="scan", description="Сканировать диалоги"),
-        BotCommand(command="clean", description="Очистка аккаунта"),
-        BotCommand(command="history", description="История и статистика"),
-        BotCommand(command="support", description="Служба поддержки тикетов"),
-        BotCommand(command="settings", description="Настройки и аккаунт"),
-    ]
-    try:
-        await bot.set_my_commands(commands)
-        logger.info("Registered bot slash commands with Telegram.")
-    except Exception as e:
-        logger.warning(f"Could not register bot commands: {e}")
 
 
 async def main():
@@ -47,8 +30,8 @@ async def main():
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(bot_router)
 
-    # Register Bot Slash Commands
-    await register_bot_commands(bot)
+    # Register Bot Profile, Commands, and Menu Button
+    await setup_bot_profile(bot)
 
     # Wire notification callback for APScheduler
     async def _send_notification(telegram_id: int, text: str):
