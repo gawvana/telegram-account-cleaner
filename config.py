@@ -104,6 +104,10 @@ class Settings(BaseSettings):
     # Internationalization
     DEFAULT_LANGUAGE: str = Field(default="ru", description="Default language (ru / en / uz)")
 
+    # Welcome Video
+    START_VIDEO_PATH: str = Field(default="assets/welcome.mp4", description="Path to welcome video for /start")
+    START_VIDEO_FILE_ID: Optional[str] = Field(default=None, description="Telegram file_id of welcome video")
+
     # Rate Limiting & Safety Limits
     MAX_CONCURRENT_CLIENTS: int = 10
     FLOOD_WAIT_MAX_SLEEP: int = 120  # Max seconds to sleep automatically on FloodWait

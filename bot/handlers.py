@@ -1,9 +1,10 @@
 import asyncio
+from pathlib import Path
 from typing import Optional
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, Message
 
 from bot.filters import UserContextFilter
 from bot.keyboards import (
@@ -50,6 +51,61 @@ async def _get_user_lang(telegram_id: int) -> str:
     return user.get("language") or "ru"
 
 
+# ---------------- START VIDEO HELPER ---------------- #
+
+_cached_video_file_id: Optional[str] = None
+
+
+async def _send_start_video_message(
+    message: Message,
+    caption: str,
+    reply_markup=None,
+    parse_mode: str = "Markdown",
+) -> Message:
+    """Sends start video with text caption, auto-caching file_id for instant subsequent deliveries."""
+    global _cached_video_file_id
+
+    # 1. Try file_id from settings or cache
+    file_id = settings.START_VIDEO_FILE_ID or _cached_video_file_id
+    if file_id:
+        try:
+            return await message.answer_video(
+                video=file_id,
+                caption=caption,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send video using file_id ({file_id}): {e}")
+
+    # 2. Try local video file
+    video_path = Path(settings.START_VIDEO_PATH)
+    if not video_path.is_absolute():
+        video_path = Path(__file__).resolve().parent.parent / video_path
+
+    if video_path.exists():
+        try:
+            sent_msg = await message.answer_video(
+                video=FSInputFile(str(video_path)),
+                caption=caption,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode,
+            )
+            if sent_msg.video and sent_msg.video.file_id:
+                _cached_video_file_id = sent_msg.video.file_id
+                logger.info(f"Cached start video file_id: {_cached_video_file_id}")
+            return sent_msg
+        except Exception as e:
+            logger.warning(f"Failed to send start video from path ({video_path}): {e}")
+
+    # 3. Fallback to standard text answer if video is unavailable
+    return await message.answer(
+        text=caption,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+    )
+
+
 # ---------------- COMMANDS ---------------- #
 
 @router.message(CommandStart())
@@ -85,11 +141,12 @@ async def cmd_start(message: Message, state: FSMContext):
                 "3. **Отзыв согласия**: Вы можете отозвать согласие и мгновенно стереть сессию в любой момент в Настройках.\n\n"
                 "Нажимая «Принять и продолжить», вы соглашаетесь с условиями сервиса."
             )
-        await message.answer(consent_text, reply_markup=get_consent_keyboard(lang))
+        await _send_start_video_message(message, caption=consent_text, reply_markup=get_consent_keyboard(lang))
         return
 
-    await message.answer(
-        t("welcome_minimal", lang),
+    await _send_start_video_message(
+        message,
+        caption=t("welcome_minimal", lang),
         reply_markup=get_minimal_start_keyboard(lang),
     )
 
@@ -99,10 +156,17 @@ async def cb_consent_accept(call: CallbackQuery):
     lang = await _get_user_lang(call.from_user.id)
     await consent_service.record_user_consent(call.from_user.id)
     await call.answer("✅ Согласие принято!" if lang == "ru" else "✅ Consent accepted!")
-    await call.message.edit_text(
-        t("welcome_minimal", lang),
-        reply_markup=get_minimal_start_keyboard(lang),
-    )
+    if call.message:
+        if call.message.caption is not None:
+            await call.message.edit_caption(
+                caption=t("welcome_minimal", lang),
+                reply_markup=get_minimal_start_keyboard(lang),
+            )
+        else:
+            await call.message.edit_text(
+                text=t("welcome_minimal", lang),
+                reply_markup=get_minimal_start_keyboard(lang),
+            )
 
 
 @router.message(Command("help"))
