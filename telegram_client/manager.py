@@ -75,8 +75,8 @@ class ClientManager:
 
         client = TelegramClient(
             StringSession(decrypted_str),
-            settings.API_ID,
-            settings.API_HASH,
+            settings.effective_api_id,
+            settings.effective_api_hash,
         )
         return client
 

@@ -166,15 +166,22 @@ function renderDialogsList() {
 
     const isChecked = state.selectedChatIds.has(item.chat_id);
 
+    const typeLabel = {
+      CHANNEL: "Канал",
+      GROUP: "Группа",
+      BOT: "Бот",
+      PRIVATE: "Личный",
+    }[item.chat_type] || item.chat_type;
+
     el.innerHTML = `
       <input type="checkbox" class="dialog-checkbox" data-id="${item.chat_id}" ${isChecked ? "checked" : ""} ${item.is_whitelisted ? "disabled" : ""} />
       <div class="dialog-info">
         <div class="dialog-title">${escapeHtml(item.title)}</div>
         <div class="dialog-meta">
-          <span>${item.chat_type}</span>
+          <span class="badge badge-tag">${typeLabel}</span>
           ${item.username ? `<span>@${item.username}</span>` : ""}
-          ${item.tags && item.tags.length ? `<span class="badge badge-tag">${item.tags[0]}</span>` : ""}
-          ${item.is_whitelisted ? `<span class="badge badge-wl">⭐ Whitelist</span>` : ""}
+          ${item.tags && item.tags.length ? `<span class="badge badge-tag">${escapeHtml(item.tags[0])}</span>` : ""}
+          ${item.is_whitelisted ? `<span class="badge badge-wl">Whitelist</span>` : ""}
         </div>
       </div>
     `;
@@ -548,10 +555,21 @@ async function requestLoginCode() {
   const phone = document.getElementById("loginPhoneInput").value.trim();
   if (!phone) return alert("Введите номер телефона");
 
+  const customApiId = document.getElementById("customApiIdInput") ? document.getElementById("customApiIdInput").value.trim() : null;
+  const customApiHash = document.getElementById("customApiHashInput") ? document.getElementById("customApiHashInput").value.trim() : null;
+
+  const payload = { phone };
+  if (customApiId && !isNaN(parseInt(customApiId))) {
+    payload.api_id = parseInt(customApiId);
+  }
+  if (customApiHash) {
+    payload.api_hash = customApiHash;
+  }
+
   try {
     const res = await apiFetch("/login/request-code", {
       method: "POST",
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify(payload),
     });
     alert(res.message);
     document.getElementById("loginStepPhone").style.display = "none";

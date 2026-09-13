@@ -8,6 +8,8 @@ class AuthVerificationRequest(BaseModel):
 
 class LoginCodeRequest(BaseModel):
     phone: str
+    api_id: Optional[int] = None
+    api_hash: Optional[str] = None
 
 
 class LoginCodeSubmit(BaseModel):

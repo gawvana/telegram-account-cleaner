@@ -12,6 +12,7 @@ from bot.keyboards import (
     get_lang_keyboard,
     get_main_menu_keyboard,
     get_max_clean_confirm_keyboard,
+    get_minimal_start_keyboard,
     get_running_job_keyboard,
     get_smart_clean_keyboard,
     get_whitelist_keyboard,
@@ -52,15 +53,15 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     lang = await _get_user_lang(message.from_user.id)
     await message.answer(
-        t("welcome", lang),
-        reply_markup=get_main_menu_keyboard(lang),
+        t("welcome_minimal", lang),
+        reply_markup=get_minimal_start_keyboard(lang),
     )
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     lang = await _get_user_lang(message.from_user.id)
-    await message.answer(t("help_text", lang), reply_markup=get_main_menu_keyboard(lang))
+    await message.answer(t("welcome_minimal", lang), reply_markup=get_minimal_start_keyboard(lang))
 
 
 @router.message(Command("account"))

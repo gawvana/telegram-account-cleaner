@@ -1,4 +1,5 @@
 {
+  "welcome_minimal": "✨ **Cleaner Pro**\n\nSmart hygiene and security for your Telegram account.\n\nAll tools, scanning, dialog preview, whitelist, and history are available in the unified Mini App.",
   "welcome": "🧹 **MAXIMUM TELEGRAM ACCOUNT CLEANER v2.0**\n\nProfessional personal account hygiene tool.\nAll actions are performed via official Telegram API only with your explicit consent.\n\nChoose an action from the menu below or open the Mini App for granular controls.",
   "main_menu_title": "🧹 **MAXIMUM ACCOUNT CLEANER**",
   "btn_scan": "🔍 Scan Account",

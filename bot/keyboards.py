@@ -3,6 +3,21 @@ from config import settings
 from utils.i18n import t
 
 
+def get_minimal_start_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Minimalist Apple-style launch keyboard with a single prominent Mini App action button."""
+    btn_text = "✨ Открыть Cleaner Pro" if lang == "ru" else "✨ Open Cleaner Pro"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=btn_text,
+                    web_app=WebAppInfo(url=settings.WEBAPP_URL),
+                )
+            ]
+        ]
+    )
+
+
 def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Constructs main menu inline keyboard matching specification Section 7."""
     buttons = [

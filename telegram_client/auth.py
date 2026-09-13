@@ -52,13 +52,22 @@ class AuthManager:
                 if pending and pending.client.is_connected():
                     await pending.client.disconnect()
 
-    async def request_phone_code(self, telegram_id: int, phone: str) -> AuthState:
+    async def request_phone_code(
+        self,
+        telegram_id: int,
+        phone: str,
+        api_id: Optional[int] = None,
+        api_hash: Optional[str] = None,
+    ) -> AuthState:
         """Step 1: Connects Telethon client and requests SMS/Telegram auth code."""
         await self.cleanup_expired()
         clean_phone = "".join(filter(lambda c: c.isdigit() or c == "+", phone))
 
+        eff_api_id = api_id if api_id and api_id != 0 else settings.effective_api_id
+        eff_api_hash = api_hash if api_hash and len(api_hash) > 5 else settings.effective_api_hash
+
         # Create transient client in memory
-        client = TelegramClient(StringSession(), settings.API_ID, settings.API_HASH)
+        client = TelegramClient(StringSession(), eff_api_id, eff_api_hash)
         await client.connect()
 
         try:
@@ -92,7 +101,7 @@ class AuthManager:
         except Exception as e:
             await client.disconnect()
             logger.error(f"Error requesting code for {telegram_id}: {str(e)}")
-            raise AuthRequiredException("Ошибка при отправке запроса кода в Telegram.")
+            raise AuthRequiredException(f"Ошибка при отправке запроса кода: {str(e)}")
 
     async def submit_auth_code(self, telegram_id: int, code: str) -> Tuple[AuthState, Optional[str]]:
         """Step 2: Submits SMS/Telegram code; returns AuthState and optional encrypted session."""

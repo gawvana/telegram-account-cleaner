@@ -18,13 +18,13 @@ async def get_auth_status(user_id: int = Depends(get_current_user_id)):
 @router.post("/request-code")
 async def request_code(req: LoginCodeRequest, user_id: int = Depends(get_current_user_id)):
     """Step 1: Mini App requests SMS/Telegram code securely."""
-    if not settings.API_ID or not settings.API_HASH:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="API_ID и API_HASH не настроены на сервере. Получите их на my.telegram.org (API development tools) и добавьте в переменные окружения.",
-        )
     try:
-        auth_state = await auth_manager.request_phone_code(user_id, req.phone)
+        auth_state = await auth_manager.request_phone_code(
+            telegram_id=user_id,
+            phone=req.phone,
+            api_id=req.api_id,
+            api_hash=req.api_hash,
+        )
         return {
             "success": True,
             "step": auth_state.step,
