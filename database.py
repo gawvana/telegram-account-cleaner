@@ -385,6 +385,11 @@ class Database:
             )
             row = await cursor.fetchone()
             if row:
+                await conn.execute(
+                    "INSERT OR IGNORE INTO settings (telegram_id) VALUES (?)",
+                    (telegram_id,),
+                )
+                await conn.commit()
                 return dict(row)
 
             await conn.execute(

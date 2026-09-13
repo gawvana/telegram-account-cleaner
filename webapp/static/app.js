@@ -688,24 +688,36 @@ function setupEventListeners() {
 
   // Schedule Save
   document.getElementById("btnSaveSchedule")?.addEventListener("click", async () => {
+    const btn = document.getElementById("btnSaveSchedule");
+    if (btn) btn.classList.add("is-loading");
+
     const enabled = document.getElementById("scheduleEnableToggle").checked;
     const freq = document.getElementById("scheduleFreqSelect").value;
     const scope = document.getElementById("scheduleScopeSelect").value;
     const mode = document.getElementById("scheduleModeSelect").value;
 
+    const payload = {
+      auto_clean_enabled: enabled ? 1 : 0,
+      auto_clean_frequency: freq,
+      auto_clean_scope: scope,
+      auto_clean_mode: mode,
+    };
+
     try {
       await apiFetch("/settings", {
         method: "POST",
-        body: JSON.stringify({
-          auto_clean_enabled: enabled ? 1 : 0,
-          auto_clean_frequency: freq,
-          auto_clean_scope: scope,
-          auto_clean_mode: mode,
-        }),
+        body: JSON.stringify(payload),
       });
-      showToast("Расписание обновлено", "success");
+
+      try {
+        localStorage.setItem("clin_schedule_settings", JSON.stringify(payload));
+      } catch (e) {}
+
+      showToast("Расписание успешно сохранено", "success");
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
+      if (btn) btn.classList.remove("is-loading");
     }
   });
 
@@ -1449,7 +1461,15 @@ async function loadHistory() {
 async function loadSchedule() {
   try {
     const res = await apiFetch("/settings");
-    const s = res.settings || res || {};
+    let s = res.settings || res || {};
+
+    try {
+      const cached = JSON.parse(localStorage.getItem("clin_schedule_settings") || "{}");
+      if (cached && typeof cached === "object") {
+        s = { ...cached, ...s };
+      }
+    } catch (e) {}
+
     document.getElementById("scheduleEnableToggle").checked = Boolean(s.auto_clean_enabled);
     if (s.auto_clean_frequency) document.getElementById("scheduleFreqSelect").value = s.auto_clean_frequency;
     if (s.auto_clean_scope) document.getElementById("scheduleScopeSelect").value = s.auto_clean_scope;
@@ -1460,6 +1480,15 @@ async function loadSchedule() {
     }
   } catch (err) {
     console.warn("Could not load schedule:", err);
+    try {
+      const cached = JSON.parse(localStorage.getItem("clin_schedule_settings") || "{}");
+      if (cached && typeof cached === "object") {
+        document.getElementById("scheduleEnableToggle").checked = Boolean(cached.auto_clean_enabled);
+        if (cached.auto_clean_frequency) document.getElementById("scheduleFreqSelect").value = cached.auto_clean_frequency;
+        if (cached.auto_clean_scope) document.getElementById("scheduleScopeSelect").value = cached.auto_clean_scope;
+        if (cached.auto_clean_mode) document.getElementById("scheduleModeSelect").value = cached.auto_clean_mode;
+      }
+    } catch (e) {}
   }
 }
 

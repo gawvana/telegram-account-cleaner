@@ -72,17 +72,32 @@ async def import_whitelist_items(req: WhitelistImportRequest, user_id: int = Dep
 
 @router.get("/settings")
 async def get_user_settings(user_id: int = Depends(get_current_user_id)):
+    await db.get_or_create_user(user_id, salt=crypto_service.generate_salt())
     async with db.get_connection() as conn:
+        await conn.execute(
+            "INSERT OR IGNORE INTO settings (telegram_id) VALUES (?)",
+            (user_id,),
+        )
+        await conn.commit()
         cursor = await conn.execute(
             "SELECT * FROM settings WHERE telegram_id = ?", (user_id,)
         )
         row = await cursor.fetchone()
-        return dict(row) if row else {}
+        return dict(row) if row else {
+            "telegram_id": user_id,
+            "auto_clean_enabled": 0,
+            "auto_clean_frequency": "weekly",
+            "auto_clean_scope": "smart",
+            "auto_clean_mode": "dry_run",
+            "dead_channel_days": 60,
+            "notifications_enabled": 1,
+        }
 
 
 @router.post("/settings")
 @router.post("/settings/schedule")
 async def update_user_settings(req: SettingsUpdateRequest, user_id: int = Depends(get_current_user_id)):
+    await db.get_or_create_user(user_id, salt=crypto_service.generate_salt())
     updates = []
     params = []
     for field, val in req.model_dump(exclude_unset=True).items():
@@ -92,8 +107,14 @@ async def update_user_settings(req: SettingsUpdateRequest, user_id: int = Depend
         params.append(val)
 
     if updates:
-        params.append(user_id)
         async with db.get_connection() as conn:
+            # 1. Guarantee row exists in settings table
+            await conn.execute(
+                "INSERT OR IGNORE INTO settings (telegram_id) VALUES (?)",
+                (user_id,),
+            )
+            # 2. Update settings
+            params.append(user_id)
             await conn.execute(
                 f"UPDATE settings SET {', '.join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?",
                 params,
@@ -110,8 +131,18 @@ async def update_user_settings(req: SettingsUpdateRequest, user_id: int = Depend
                     scope=req.auto_clean_scope or "smart",
                     mode=req.auto_clean_mode or "dry_run",
                 )
+            else:
+                scheduler_service.cancel_user_job(user_id)
 
-    return {"success": True, "message": "Настройки сохранены"}
+    async with db.get_connection() as conn:
+        cur = await conn.execute("SELECT * FROM settings WHERE telegram_id = ?", (user_id,))
+        saved_row = await cur.fetchone()
+
+    return {
+        "success": True,
+        "message": "Настройки сохранены",
+        "settings": dict(saved_row) if saved_row else {},
+    }
 
 
 # ---------------- HYGIENE SCORE ---------------- #
