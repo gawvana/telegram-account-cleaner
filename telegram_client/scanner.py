@@ -68,7 +68,7 @@ class AccountScanner:
             last_date = d.date
 
             chat_type = ChatType.OTHER
-            is_creator = getattr(entity, "creator", False)
+            is_creator = bool(getattr(entity, "creator", False))
             is_admin = bool(getattr(entity, "admin_rights", None))
 
             # Determine Chat Type

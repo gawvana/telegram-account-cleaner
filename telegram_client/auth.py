@@ -140,18 +140,22 @@ class AuthManager:
             step="PHONE",
         )
 
+    async def _cancel_auth_locked(self, telegram_id: int) -> None:
+        """Internal cancellation cleanup executed when the caller already holds the user lock."""
+        async with self._global_lock:
+            pending = self._pending_sessions.pop(telegram_id, None)
+        if pending and pending.client and pending.client.is_connected():
+            try:
+                await pending.client.disconnect()
+            except Exception:
+                pass
+        logger.info(f"User {telegram_id} auth handshake safely cancelled (locked).")
+
     async def cancel_auth(self, telegram_id: int) -> None:
         """Explicitly cancels pending authentication and frees client resources."""
         lock = await self._get_user_lock(telegram_id)
         async with lock:
-            async with self._global_lock:
-                pending = self._pending_sessions.pop(telegram_id, None)
-            if pending and pending.client and pending.client.is_connected():
-                try:
-                    await pending.client.disconnect()
-                except Exception:
-                    pass
-            logger.info(f"User {telegram_id} cancelled auth handshake.")
+            await self._cancel_auth_locked(telegram_id)
 
     async def request_phone_code(
         self,
@@ -238,7 +242,7 @@ class AuthManager:
                 raise AuthRequiredException("Сессия авторизации не найдена. Начните сначала.")
 
             if pending.is_expired:
-                await self.cancel_auth(telegram_id)
+                await self._cancel_auth_locked(telegram_id)
                 raise AuthRequiredException("Время ожидания кода истекло (5 минут). Запросите код заново.")
 
             clean_code = code.strip().replace(" ", "")
@@ -248,13 +252,19 @@ class AuthManager:
             pending.status = AuthStatus.AUTHENTICATING
 
             try:
-                await pending.client.sign_in(
-                    phone=pending.phone,
-                    code=clean_code,
-                    phone_code_hash=pending.phone_code_hash,
+                await asyncio.wait_for(
+                    pending.client.sign_in(
+                        phone=pending.phone,
+                        code=clean_code,
+                        phone_code_hash=pending.phone_code_hash,
+                    ),
+                    timeout=30.0,
                 )
                 return await self._finalize_login(telegram_id, pending)
 
+            except asyncio.TimeoutError:
+                await self._cancel_auth_locked(telegram_id)
+                raise AuthRequiredException("Время ожидания ответа Telegram истекло. Попробуйте запросить код снова.")
             except SessionPasswordNeededError:
                 logger.info(f"User {telegram_id} requires 2FA password")
                 pending.status = AuthStatus.WAITING_FOR_2FA
@@ -273,7 +283,7 @@ class AuthManager:
                 pending.status = AuthStatus.WAITING_FOR_CODE
                 raise AuthRequiredException("Неверный код подтверждения.")
             except PhoneCodeExpiredError:
-                await self.cancel_auth(telegram_id)
+                await self._cancel_auth_locked(telegram_id)
                 raise AuthRequiredException("Срок действия кода истёк. Запросите код заново.")
             except FloodWaitError as e:
                 raise FloodWaitTimeoutException(e.seconds)
@@ -294,7 +304,7 @@ class AuthManager:
                 raise AuthRequiredException("Сессия авторизации не найдена. Начните сначала.")
 
             if pending.is_expired:
-                await self.cancel_auth(telegram_id)
+                await self._cancel_auth_locked(telegram_id)
                 raise AuthRequiredException("Время ожидания истекло. Начните заново.")
 
             if pending.status != AuthStatus.WAITING_FOR_2FA:
@@ -303,8 +313,14 @@ class AuthManager:
             pending.status = AuthStatus.AUTHENTICATING
 
             try:
-                await pending.client.sign_in(password=password)
+                await asyncio.wait_for(
+                    pending.client.sign_in(password=password),
+                    timeout=30.0,
+                )
                 return await self._finalize_login(telegram_id, pending)
+            except asyncio.TimeoutError:
+                await self._cancel_auth_locked(telegram_id)
+                raise AuthRequiredException("Время ожидания ответа Telegram истекло. Попробуйте снова.")
             except PasswordHashInvalidError:
                 pending.status = AuthStatus.WAITING_FOR_2FA
                 raise AuthRequiredException("Неверный 2FA пароль.")

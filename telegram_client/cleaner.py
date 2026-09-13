@@ -210,7 +210,7 @@ class AccountCleaner:
                         job_id,
                         res.chat_id,
                         res.title,
-                        res.chat_type.value,
+                        res.chat_type.value if hasattr(res.chat_type, "value") else str(res.chat_type),
                         res.action,
                         res.status,
                         res.error_message,

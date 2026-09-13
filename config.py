@@ -39,20 +39,26 @@ class Settings(BaseSettings):
     # Telegram MTProto Backend Credentials (never shown or requested from end users)
     TELEGRAM_API_ID: Optional[int] = Field(default=None, description="Telegram MTProto API ID")
     TELEGRAM_API_HASH: Optional[str] = Field(default=None, description="Telegram MTProto API Hash")
-    API_ID: int = Field(default=2040, description="Telegram API ID fallback (defaults to official Telegram Desktop client)")
-    API_HASH: str = Field(default="b1844dd0f62ee8e35e54135eab32ce24", description="Telegram API HASH fallback (defaults to official Telegram Desktop client)")
+    API_ID: Optional[int] = Field(default=None, description="Telegram API ID fallback")
+    API_HASH: Optional[str] = Field(default=None, description="Telegram API HASH fallback")
 
     @property
     def effective_api_id(self) -> int:
-        if self.TELEGRAM_API_ID and self.TELEGRAM_API_ID != 0:
-            return self.TELEGRAM_API_ID
-        return self.API_ID if self.API_ID and self.API_ID != 0 else 2040
+        val = self.TELEGRAM_API_ID or self.API_ID
+        if val and val != 0:
+            return val
+        if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
+            return 12345
+        raise RuntimeError("TELEGRAM_API_ID is not configured in environment variables (.env / production env).")
 
     @property
     def effective_api_hash(self) -> str:
-        if self.TELEGRAM_API_HASH and len(self.TELEGRAM_API_HASH) > 5:
-            return self.TELEGRAM_API_HASH
-        return self.API_HASH if self.API_HASH and len(self.API_HASH) > 5 else "b1844dd0f62ee8e35e54135eab32ce24"
+        val = self.TELEGRAM_API_HASH or self.API_HASH
+        if val and len(val) > 5:
+            return val
+        if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("TESTING"):
+            return "0123456789abcdef0123456789abcdef"
+        raise RuntimeError("TELEGRAM_API_HASH is not configured in environment variables (.env / production env).")
 
     # Database & Storage (uses /tmp in serverless environment)
     DATABASE_PATH: str = Field(

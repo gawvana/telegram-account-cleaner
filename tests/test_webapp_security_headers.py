@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from fastapi.testclient import TestClient
 from webapp_server import app
 
@@ -9,6 +9,8 @@ def test_security_headers_and_health():
     assert response.headers.get('x-content-type-options') == 'nosniff'
     assert response.headers.get('referrer-policy') == 'strict-origin-when-cross-origin'
     assert response.headers.get('x-xss-protection') == '1; mode=block'
+    assert 'default-src' in response.headers.get('content-security-policy', '')
+    assert 'geolocation=()' in response.headers.get('permissions-policy', '')
     data = response.json()
     assert data['app'] == 'CLIN'
     assert data['status'] == 'ok'

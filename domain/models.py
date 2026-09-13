@@ -46,6 +46,7 @@ class HeuristicTags(BaseModel):
     likely_spam_bot: bool = False
     zero_interaction: bool = False
     recommended_for_cleanup: bool = False
+    needs_review: bool = False
     tags: List[str] = Field(default_factory=list)
 
 

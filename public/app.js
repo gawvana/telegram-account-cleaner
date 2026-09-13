@@ -30,6 +30,23 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
+// Strict URL Sanitizer to prevent javascript: and data: XSS vectors
+function sanitizeUrl(url) {
+  if (!url || typeof url !== "string") return "#";
+  const trimmed = url.trim();
+  try {
+    const parsed = new URL(trimmed, window.location.origin);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:" || parsed.protocol === "tg:") {
+      return trimmed;
+    }
+  } catch (e) {
+    if (trimmed.startsWith("tg://") || trimmed.startsWith("https://") || trimmed.startsWith("http://")) {
+      return trimmed;
+    }
+  }
+  return "#";
+}
+
 // Toast Notifications System
 function showToast(message, type = "info", duration = 3500) {
   const container = document.getElementById("toastContainer");
@@ -43,7 +60,13 @@ function showToast(message, type = "info", duration = 3500) {
   if (type === "error") icon = "✕";
   if (type === "warning") icon = "⚠";
 
-  toast.innerHTML = `<span>${icon}</span><span>${escapeHtml(message)}</span>`;
+  const iconSpan = document.createElement("span");
+  iconSpan.textContent = icon;
+  const msgSpan = document.createElement("span");
+  msgSpan.textContent = String(message || "");
+
+  toast.appendChild(iconSpan);
+  toast.appendChild(msgSpan);
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -1058,22 +1081,38 @@ async function loadSupportData() {
     const ticketRes = await apiFetch("/support/tickets");
     const ticketList = document.getElementById("supportTicketsList");
     if (ticketList && ticketRes.data) {
+      ticketList.textContent = "";
       if (ticketRes.data.length === 0) {
-        ticketList.innerHTML = '<div style="padding: 12px; color: var(--clin-text-muted);">У вас нет открытых обращений.</div>';
+        const emptyDiv = document.createElement("div");
+        emptyDiv.style.cssText = "padding: 12px; color: var(--clin-text-muted);";
+        emptyDiv.textContent = "У вас нет открытых обращений.";
+        ticketList.appendChild(emptyDiv);
       } else {
-        ticketList.innerHTML = ticketRes.data
-          .map(
-            (t) => `
-          <div class="ticket-item" onclick="openTicketDetail('${t.ticket_number}')">
-            <div>
-              <span class="ticket-number-badge">${t.ticket_number}</span>
-              <strong style="margin-left: 8px;">${escapeHtml(t.subject)}</strong>
-            </div>
-            <div style="font-size: 11px; text-transform: uppercase;" class="text-success">${escapeHtml(t.status)}</div>
-          </div>
-        `
-          )
-          .join("");
+        ticketRes.data.forEach((t) => {
+          const item = document.createElement("div");
+          item.className = "ticket-item";
+          item.style.cursor = "pointer";
+          item.addEventListener("click", () => openTicketDetail(t.ticket_number));
+
+          const left = document.createElement("div");
+          const badge = document.createElement("span");
+          badge.className = "ticket-number-badge";
+          badge.textContent = t.ticket_number;
+          const strong = document.createElement("strong");
+          strong.style.marginLeft = "8px";
+          strong.textContent = t.subject;
+          left.appendChild(badge);
+          left.appendChild(strong);
+
+          const right = document.createElement("div");
+          right.className = "text-success";
+          right.style.cssText = "font-size: 11px; text-transform: uppercase;";
+          right.textContent = t.status;
+
+          item.appendChild(left);
+          item.appendChild(right);
+          ticketList.appendChild(item);
+        });
       }
     }
   } catch (err) {
@@ -1089,16 +1128,18 @@ async function openTicketDetail(ticketNumber) {
     document.getElementById("threadTicketSubject").textContent = data.ticket.subject;
 
     const container = document.getElementById("threadMessagesContainer");
-    container.innerHTML = data.messages
-      .map(
-        (m) => `
-      <div class="message-bubble ${m.sender_type}">
-        <strong>${m.sender_type === "admin" ? "Поддержка CLIN" : "Вы"}:</strong>
-        <div>${escapeHtml(m.message)}</div>
-      </div>
-    `
-      )
-      .join("");
+    container.textContent = "";
+    (data.messages || []).forEach((m) => {
+      const bubble = document.createElement("div");
+      bubble.className = `message-bubble ${m.sender_type}`;
+      const author = document.createElement("strong");
+      author.textContent = (m.sender_type === "admin" ? "Поддержка CLIN" : "Вы") + ": ";
+      const msgDiv = document.createElement("div");
+      msgDiv.textContent = m.message;
+      bubble.appendChild(author);
+      bubble.appendChild(msgDiv);
+      container.appendChild(bubble);
+    });
 
     const sendBtn = document.getElementById("btnSendThreadReply");
     sendBtn.onclick = async () => {
@@ -1130,13 +1171,27 @@ async function loadSettingsData() {
     const box = document.getElementById("manifestPreviewBox");
     if (box) {
       const items = res.manifest || [];
+      box.textContent = "";
       if (items.length === 0) {
         box.textContent = "Манифест пуст. При выходе из публичных каналов ссылки появятся здесь.";
       } else {
-        box.innerHTML = items
-          .slice(0, 10)
-          .map((i) => `<div>• ${escapeHtml(i.title)}: <a href="${i.invite_link}" target="_blank" style="color: var(--clin-green);">${escapeHtml(i.invite_link || "@" + i.username)}</a></div>`)
-          .join("");
+        items.slice(0, 10).forEach((i) => {
+          const row = document.createElement("div");
+          row.style.marginBottom = "4px";
+          row.textContent = `• ${i.title || "Канал"}: `;
+
+          const rawLink = i.invite_link || (i.username ? `https://t.me/${i.username}` : "");
+          if (rawLink) {
+            const link = document.createElement("a");
+            link.href = sanitizeUrl(rawLink);
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.style.color = "var(--clin-green)";
+            link.textContent = rawLink;
+            row.appendChild(link);
+          }
+          box.appendChild(row);
+        });
       }
     }
   } catch (e) {}

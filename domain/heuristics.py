@@ -76,9 +76,25 @@ class HeuristicsEngine:
         if inactive_days >= 180 and not is_pinned:
             tags.append(f"Неактивен > 6 мес ({inactive_days} дн.)")
 
+        # Rule 5: Ambiguous / Borderline activity requiring manual user review
+        needs_review = False
+        if not is_pinned:
+            if chat_type == ChatType.CHANNEL and 30 <= inactive_days < self.dead_channel_threshold_days:
+                needs_review = True
+            elif chat_type == ChatType.PRIVATE and 30 <= inactive_days < self.inactive_chat_threshold_days:
+                needs_review = True
+            elif chat_type in [ChatType.GROUP, ChatType.SUPERGROUP] and 60 <= inactive_days < 180:
+                needs_review = True
+            elif chat_type == ChatType.BOT and not likely_spam_bot and inactive_days >= 60:
+                needs_review = True
+
+        if needs_review:
+            tags.append("Требует проверки")
+
         # Recommendation: solely advisory! Never executes anything on its own.
         recommended = (
             not is_pinned
+            and not needs_review
             and (
                 likely_dead_channel
                 or likely_spam_bot
@@ -93,6 +109,7 @@ class HeuristicsEngine:
             likely_spam_bot=likely_spam_bot,
             zero_interaction=zero_interaction,
             recommended_for_cleanup=recommended,
+            needs_review=needs_review,
             tags=tags,
         )
 
