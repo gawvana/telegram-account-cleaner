@@ -7,8 +7,8 @@ class FontsModule(BaseFeatureModule):
         super().__init__(
             FeatureDefinition(
                 id="fonts",
-                name="Fonts",
-                description="Style your messages with Unicode fonts",
+                name="Шрифты",
+                description="Стилизация сообщений с помощью шрифтов Unicode",
                 category=FeatureCategory.TEXT,
                 requires_telegram=False,
                 icon=ICONS.get("fonts", "")

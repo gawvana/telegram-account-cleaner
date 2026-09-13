@@ -1707,7 +1707,7 @@ async function loadFeatures() {
         renderFeaturesGrid();
     } catch (e) {
         console.error('Failed to load features:', e);
-        showToast('Failed to load features', 'error');
+        showToast('Не удалось загрузить функции', 'error');
     }
 }
 
@@ -1746,13 +1746,13 @@ function renderFeaturesGrid() {
     // Group by category
     const categoryOrder = ['Messages', 'Automation', 'Communication', 'Moderation', 'Fun', 'Text', 'Games'];
     const categoryLabels = {
-        'messages': 'Messages',
-        'automation': 'Automation',
-        'communication': 'Communication',
-        'moderation': 'Moderation',
-        'fun': 'Fun',
-        'text': 'Text Tools',
-        'games': 'Games'
+        'messages': 'Сообщения',
+        'automation': 'Автоматизация',
+        'communication': 'Общение',
+        'moderation': 'Модерация',
+        'fun': 'Развлечения',
+        'text': 'Инструменты текста',
+        'games': 'Игры'
     };
     
     const grouped = {};
@@ -1785,9 +1785,9 @@ function renderFeaturesGrid() {
 
 function renderFeatureCard(f) {
     const statusClass = f.coming_soon ? 'coming-soon' : f.enabled ? 'active' : 'inactive';
-    const statusText = f.coming_soon ? 'Coming Soon' :
-                       f.enabled ? 'Active' :
-                       f.requires_telegram ? 'Needs Telegram' : 'Inactive';
+    const statusText = f.coming_soon ? 'Скоро' :
+                       f.enabled ? 'Активна' :
+                       f.requires_telegram ? 'Требуется Telegram' : 'Неактивна';
     const favClass = f.is_favorite ? 'is-favorite' : '';
     
     return `
@@ -1830,7 +1830,7 @@ async function loadFeatureDetail(featureId) {
                 <h2 class="feature-detail-name">${data.name}</h2>
                 <p class="feature-detail-desc">${data.description}</p>
                 <span class="feature-status-badge ${data.enabled ? 'active' : data.coming_soon ? 'coming-soon' : 'inactive'}">
-                    ${data.coming_soon ? 'Coming Soon' : data.enabled ? 'Active' : 'Inactive'}
+                    ${data.coming_soon ? 'Скоро' : data.enabled ? 'Активна' : 'Неактивна'}
                 </span>
             </div>
         `;
@@ -1898,7 +1898,7 @@ async function loadFeatureDetail(featureId) {
         
     } catch (e) {
         console.error('Failed to load feature detail:', e);
-        showToast('Failed to load feature details', 'error');
+        showToast('Не удалось загрузить детали функции', 'error');
     }
 }
 
@@ -1918,7 +1918,7 @@ async function toggleFeatureEnabled(featureId, enabled) {
         if (state.activeScreen === 'features') renderFeaturesGrid();
         if (state.activeScreen === 'feature-detail') loadFeatureDetail(featureId);
     } catch (e) {
-        showToast('Failed to toggle feature', 'error');
+        showToast('Не удалось переключить функцию', 'error');
     }
 }
 
@@ -1940,7 +1940,7 @@ async function toggleFeatureFavorite(featureId) {
             renderFeaturesGrid();
         }
     } catch (e) {
-        showToast('Failed to update favorite', 'error');
+        showToast('Не удалось обновить избранное', 'error');
     }
 }
 
@@ -1959,20 +1959,20 @@ async function saveFeatureSettings(featureId) {
             method: 'POST',
             body: JSON.stringify({ settings })
         });
-        showToast('Settings saved', 'success');
+        showToast('Настройки сохранены', 'success');
     } catch (e) {
-        showToast('Failed to save settings', 'error');
+        showToast('Не удалось сохранить настройки', 'error');
     }
 }
 
 async function stopAllAutomations() {
-    if (!confirm('Stop all automation features?')) return;
+    if (!confirm('Остановить все функции автоматизации?')) return;
     try {
         const data = await apiFetch('/features/stop-all', { method: 'POST' });
         showToast(`Stopped ${data.stopped_features.length} automation(s)`, 'success');
         if (state.activeScreen === 'features') loadFeatures();
     } catch (e) {
-        showToast('Failed to stop automations', 'error');
+        showToast('Не удалось остановить автоматизации', 'error');
     }
 }
 

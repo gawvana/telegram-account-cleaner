@@ -7,8 +7,8 @@ class RPModule(BaseFeatureModule):
         super().__init__(
             FeatureDefinition(
                 id="rp",
-                name="RP Languages",
-                description="Transform text into character roleplay styles",
+                name="RP Языки",
+                description="Преобразование текста в стили ролевых персонажей",
                 category=FeatureCategory.COMMUNICATION,
                 requires_telegram=False,
                 icon=ICONS.get("rp", "")

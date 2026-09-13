@@ -8,8 +8,8 @@ class OneTimeMessagesModule(BaseFeatureModule):
         super().__init__(
             FeatureDefinition(
                 id="one_time_messages",
-                name="One-Time Messages",
-                description="Send self-destructing temporary messages with timer",
+                name="Одноразовые сообщения",
+                description="Отправка самоуничтожающихся временных сообщений по таймеру",
                 category=FeatureCategory.MESSAGES,
                 requires_telegram=True,
                 icon=ICONS.get("one_time_messages", "")

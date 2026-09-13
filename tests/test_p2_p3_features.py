@@ -6,13 +6,14 @@ from features.mini_games.service import game_service
 
 def test_feature_registry():
     auto_discover_features()
-    assert len(feature_registry) == 12
+    assert len(feature_registry.get_all()) == 12
     for name in ['deleted_messages', 'edited_messages', 'one_time_messages',
                  'auto_responder', 'translator', 'rp',
                  'spam_protection', 'prank', 'repeater',
                  'mute', 'fonts', 'mini_games']:
-        assert name in feature_registry
-        assert not feature_registry[name].coming_soon
+        module = next((m for m in feature_registry.get_all() if m.id == name), None)
+        assert module is not None
+        assert not module.coming_soon
 
 def test_prank_effects():
     assert reverse("hello") == "olleh"

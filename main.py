@@ -48,6 +48,8 @@ async def main():
         await scheduler_service.sync_all_schedules()
 
     logger.info("CLIN Bot starting polling...")
+    from features import auto_discover_features
+    auto_discover_features()
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:

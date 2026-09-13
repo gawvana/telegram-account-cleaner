@@ -12,8 +12,8 @@ class MuteModule(BaseFeatureModule):
         super().__init__(
             FeatureDefinition(
                 id="mute",
-                name="Mute Mode",
-                description="Moderation mode deleting messages from muted users",
+                name="Игнор",
+                description="Режим модерации с удалением сообщений от заглушенных пользователей",
                 category=FeatureCategory.MODERATION,
                 requires_telegram=True,
                 requires_admin=True,
@@ -24,26 +24,21 @@ class MuteModule(BaseFeatureModule):
 
     async def on_enable(self, user_id: int) -> None:
         logger.info(f"Enabling Mute Mode for user {user_id}")
-        try:
-            from core.bot_manager import bot_manager
-            client = bot_manager.get_client(user_id)
-            if client:
+        from telegram_client.manager import client_manager
+        from telegram_client.event_manager import event_manager
+        has_session = await client_manager.has_active_session(user_id)
+        if has_session:
+            async with client_manager.get_client(user_id) as client:
                 handler = create_mute_handler(user_id)
-                client.add_event_handler(handler, events.NewMessage(incoming=True))
+                await event_manager.register_handler(user_id, "mute", client, events.NewMessage(incoming=True), handler)
                 self._handlers[user_id] = handler
-        except ImportError:
-            pass
 
     async def on_disable(self, user_id: int) -> None:
         logger.info(f"Disabling Mute Mode for user {user_id}")
-        try:
-            from core.bot_manager import bot_manager
-            client = bot_manager.get_client(user_id)
-            if client and user_id in self._handlers:
-                client.remove_event_handler(self._handlers[user_id])
-                del self._handlers[user_id]
-        except ImportError:
-            pass
+        from telegram_client.event_manager import event_manager
+        await event_manager.unregister_feature(user_id, "mute")
+        if user_id in self._handlers:
+            del self._handlers[user_id]
 
     def get_default_settings(self) -> dict:
         return {

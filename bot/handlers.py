@@ -9,6 +9,8 @@ from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, Message
 from bot.filters import UserContextFilter
 from bot.keyboards import (
     get_account_keyboard,
+    get_api_help_keyboard,
+    get_auth_cancel_keyboard,
     get_category_confirm_keyboard,
     get_consent_keyboard,
     get_lang_keyboard,
@@ -628,28 +630,97 @@ async def cb_stop_job(call: CallbackQuery):
 
 # ---------------- SECURE LOGIN VIA CHAT (FALLBACK) ---------------- #
 
+@router.callback_query(F.data == "cb:auth_cancel")
+async def cb_auth_cancel(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await auth_manager.cancel_auth(call.from_user.id)
+    lang = await _get_user_lang(call.from_user.id)
+    await call.message.edit_text("❌ Подключение отменено.", reply_markup=get_main_menu_keyboard(lang))
+    await call.answer()
+
+
+@router.callback_query(F.data == "cb:api_help")
+async def cb_api_help(call: CallbackQuery):
+    text = (
+        "📖 **Как получить API ID и API Hash:**\n\n"
+        "1. Перейдите на сайт **my.telegram.org**\n"
+        "2. Авторизуйтесь по вашему номеру телефона.\n"
+        "3. Перейдите в раздел **API development tools**.\n"
+        "4. Создайте приложение (App title и Short name — любые, например 'CLIN App').\n"
+        "5. Нажмите **Create application**.\n"
+        "6. Скопируйте **api_id** (число) и **api_hash** (32-значная строка)."
+    )
+    await call.message.edit_text(text, reply_markup=get_api_help_keyboard())
+    await call.answer()
+
+
 @router.callback_query(F.data == "cb:chat_login_start")
 async def cb_chat_login_start(call: CallbackQuery, state: FSMContext):
-    await state.set_state(AuthStates.waiting_phone)
-    await call.message.edit_text(
-        "📱 **Подключение через чат (Fallback)**\n\n"
-        "Отправьте ваш номер телефона в международном формате (например `+79991234567`):\n\n"
-        "💡 _Для большей приватности рекомендуется использовать кнопку Mini App, где код не сохраняется в чате._"
+    await state.set_state(AuthStates.waiting_api_id)
+    text = (
+        "📱 **Подключение через чат**\n\n"
+        "Шаг 1 из 4: Отправьте ваш **API ID** (только цифры):\n\n"
+        "💡 _Если у вас ещё нет API ключей, нажмите кнопку ниже._"
     )
+    await call.message.edit_text(text, reply_markup=get_api_help_keyboard())
     await call.answer()
+
+
+@router.message(AuthStates.waiting_api_id)
+async def process_chat_login_api_id(message: Message, state: FSMContext):
+    val = message.text.strip()
+    if not val.isdigit():
+        await message.answer("❌ API ID должен состоять только из цифр. Попробуйте снова:", reply_markup=get_auth_cancel_keyboard())
+        return
+
+    await state.update_data(api_id=int(val))
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    await state.set_state(AuthStates.waiting_api_hash)
+    await message.answer("🔑 Шаг 2 из 4: Отправьте ваш **API Hash** (строка из 32 символов):", reply_markup=get_auth_cancel_keyboard())
+
+
+@router.message(AuthStates.waiting_api_hash)
+async def process_chat_login_api_hash(message: Message, state: FSMContext):
+    val = message.text.strip()
+    if len(val) < 16:
+        await message.answer("❌ Неверный формат API Hash. Попробуйте снова:", reply_markup=get_auth_cancel_keyboard())
+        return
+
+    await state.update_data(api_hash=val)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
+    await state.set_state(AuthStates.waiting_phone)
+    await message.answer("📞 Шаг 3 из 4: Отправьте ваш номер телефона в международном формате (например, `+79991234567`):", reply_markup=get_auth_cancel_keyboard())
 
 
 @router.message(AuthStates.waiting_phone)
 async def process_chat_login_phone(message: Message, state: FSMContext):
     phone = message.text.strip()
     user_id = message.from_user.id
+    data = await state.get_data()
+    api_id = data.get("api_id")
+    api_hash = data.get("api_hash")
+
     try:
-        auth_state = await auth_manager.request_phone_code(user_id, phone)
+        await message.delete()
+    except Exception:
+        pass
+
+    try:
+        await auth_manager.request_phone_code(user_id, phone, api_id=api_id, api_hash=api_hash)
         await state.set_state(AuthStates.waiting_code)
-        await message.answer("📩 Код подтверждения отправлен в ваш Telegram. Введите полученный код:")
+        await message.answer("📩 Шаг 4 из 4: Код подтверждения отправлен в ваш Telegram. Введите полученный код:", reply_markup=get_auth_cancel_keyboard())
     except Exception as e:
         await state.clear()
-        await message.answer(f"❌ Ошибка: {str(e)}")
+        lang = await _get_user_lang(user_id)
+        await message.answer(f"❌ Ошибка отправки кода: {str(e)}", reply_markup=get_main_menu_keyboard(lang))
 
 
 @router.message(AuthStates.waiting_code)
@@ -657,23 +728,22 @@ async def process_chat_login_code(message: Message, state: FSMContext):
     code = message.text.strip()
     user_id = message.from_user.id
 
-    # Security: immediately delete message with code from chat history!
     try:
         await message.delete()
     except Exception:
         pass
 
     try:
-        auth_state, session_file = await auth_manager.submit_auth_code(user_id, code)
+        auth_state, _ = await auth_manager.submit_auth_code(user_id, code)
         if auth_state.is_authorized:
             await state.clear()
             lang = await _get_user_lang(user_id)
             await message.answer("🟢 **Аккаунт успешно подключён!**", reply_markup=get_main_menu_keyboard(lang))
         elif auth_state.step == "2FA":
             await state.set_state(AuthStates.waiting_2fa)
-            await message.answer("🔐 Введите ваш облачный 2FA пароль:")
+            await message.answer("🔐 Для вашего аккаунта включена двухэтапная аутентификация. Введите облачный 2FA пароль:", reply_markup=get_auth_cancel_keyboard())
     except Exception as e:
-        await message.answer(f"❌ Ошибка: {str(e)}")
+        await message.answer(f"❌ Ошибка: {str(e)}", reply_markup=get_auth_cancel_keyboard())
 
 
 @router.message(AuthStates.waiting_2fa)
@@ -681,19 +751,19 @@ async def process_chat_login_2fa(message: Message, state: FSMContext):
     password = message.text.strip()
     user_id = message.from_user.id
 
-    # Security: immediately delete password message!
     try:
         await message.delete()
     except Exception:
         pass
 
     try:
-        auth_state, session_file = await auth_manager.submit_2fa_password(user_id, password)
-        await state.clear()
-        lang = await _get_user_lang(user_id)
-        await message.answer("🟢 **Аккаунт успешно подключён!**", reply_markup=get_main_menu_keyboard(lang))
+        auth_state, _ = await auth_manager.submit_2fa_password(user_id, password)
+        if auth_state.is_authorized:
+            await state.clear()
+            lang = await _get_user_lang(user_id)
+            await message.answer("🟢 **Аккаунт успешно подключён!**", reply_markup=get_main_menu_keyboard(lang))
     except Exception as e:
-        await message.answer(f"❌ Ошибка 2FA: {str(e)}")
+        await message.answer(f"❌ Ошибка 2FA: {str(e)}", reply_markup=get_auth_cancel_keyboard())
 
 
 @router.callback_query(F.data == "cb:logout")

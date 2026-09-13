@@ -2,7 +2,9 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class AuthStates(StatesGroup):
-    """FSM states for chat-based Telegram authentication fallback."""
+    """FSM states for chat-based Telegram authentication wizard."""
+    waiting_api_id = State()
+    waiting_api_hash = State()
     waiting_phone = State()
     waiting_code = State()
     waiting_2fa = State()

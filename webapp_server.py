@@ -36,6 +36,8 @@ bot_dp.include_router(bot_router)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting CLIN FastAPI WebApp Server...")
+    from features import auto_discover_features
+    auto_discover_features()
     await db.init_db()
 
     if settings.SCHEDULER_ENABLED:

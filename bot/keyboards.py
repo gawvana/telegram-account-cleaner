@@ -5,17 +5,10 @@ from utils.i18n import t
 
 def get_consent_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Consent gate keyboard for terms and privacy acceptance."""
-    if lang == "uz":
-        btn_accept = "✅ Qabul qilish va davom etish"
-    elif lang == "en":
-        btn_accept = "✅ Accept & Continue"
-    else:
-        btn_accept = "✅ Принять и продолжить"
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text=btn_accept, callback_data="cb:consent_accept")
+                InlineKeyboardButton(text="✅ Принять и продолжить", callback_data="cb:consent_accept")
             ]
         ]
     )
@@ -23,18 +16,11 @@ def get_consent_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
 
 def get_minimal_start_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Minimalist Apple-style launch keyboard with a single prominent Mini App action button."""
-    if lang == "uz":
-        btn_text = "🚀 CLIN-ni ochish"
-    elif lang == "en":
-        btn_text = "🚀 Open CLIN"
-    else:
-        btn_text = "🚀 Открыть CLIN"
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=btn_text,
+                    text="🚀 Открыть CLIN",
                     web_app=WebAppInfo(url=settings.WEBAPP_URL),
                 )
             ]
@@ -47,7 +33,7 @@ def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     buttons = [
         [
             InlineKeyboardButton(
-                text="🚀 Открыть Mini App" if lang == "ru" else ("🚀 Open Mini App" if lang == "en" else "🚀 Mini App-ni ochish"),
+                text="🚀 Открыть Mini App",
                 web_app=WebAppInfo(url=settings.WEBAPP_URL),
             )
         ],
@@ -76,7 +62,7 @@ def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(text=t("btn_hygiene", lang), callback_data="cb:hygiene"),
-            InlineKeyboardButton(text="💬 Поддержка" if lang == "ru" else ("💬 Support" if lang == "en" else "💬 Qo'llab-quvvatlash"), callback_data="cb:support_menu"),
+            InlineKeyboardButton(text="💬 Поддержка", callback_data="cb:support_menu"),
         ],
         [
             InlineKeyboardButton(text=t("btn_account", lang), callback_data="cb:account"),
@@ -93,7 +79,7 @@ def get_support_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="💬 Открыть тикет в Mini App" if lang == "ru" else "💬 Open Ticket in Mini App",
+                    text="💬 Открыть тикет в Mini App",
                     web_app=WebAppInfo(url=f"{settings.WEBAPP_URL}#screen-support"),
                 )
             ],
@@ -129,6 +115,12 @@ def get_account_keyboard(is_authorized: bool, lang: str = "ru") -> InlineKeyboar
                         web_app=WebAppInfo(url=f"{settings.WEBAPP_URL}#screen-settings"),
                     )
                 ],
+                [
+                    InlineKeyboardButton(
+                        text="📱 Подключить через чат",
+                        callback_data="cb:chat_login_start"
+                    )
+                ],
                 [InlineKeyboardButton(text=t("btn_back", lang), callback_data="cb:main_menu")],
             ]
         )
@@ -139,6 +131,23 @@ def get_account_keyboard(is_authorized: bool, lang: str = "ru") -> InlineKeyboar
                 [InlineKeyboardButton(text=t("btn_back", lang), callback_data="cb:main_menu")],
             ]
         )
+
+
+def get_auth_cancel_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cb:auth_cancel")]
+        ]
+    )
+
+
+def get_api_help_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❓ Где взять API ID и API Hash?", callback_data="cb:api_help")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cb:auth_cancel")]
+        ]
+    )
 
 
 def get_category_confirm_keyboard(cat_name: str, lang: str = "ru") -> InlineKeyboardMarkup:

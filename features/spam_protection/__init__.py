@@ -8,8 +8,8 @@ class SpamProtectionModule(BaseFeatureModule):
         super().__init__(
             FeatureDefinition(
                 id="spam_protection",
-                name="Spam Protection",
-                description="Anti-spam and flood protection for managed chats",
+                name="Защита от спама",
+                description="Защита от спама и флуда в администрируемых чатах",
                 category=FeatureCategory.MODERATION,
                 requires_telegram=True,
                 requires_admin=True,

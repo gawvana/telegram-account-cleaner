@@ -8,8 +8,8 @@ class TranslatorModule(BaseFeatureModule):
         super().__init__(
             definition=FeatureDefinition(
                 id="translator",
-                name="Translator",
-                description="Translate incoming and outgoing messages",
+                name="Переводчик",
+                description="Перевод входящих и исходящих сообщений",
                 category=FeatureCategory.COMMUNICATION,
                 requires_telegram=False,
                 icon=ICONS.get("translator", ""),

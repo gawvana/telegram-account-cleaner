@@ -8,8 +8,8 @@ class MiniGamesModule(BaseFeatureModule):
         super().__init__(
             FeatureDefinition(
                 id="mini_games",
-                name="Mini Games",
-                description="Play casual games directly in CLIN",
+                name="Мини-игры",
+                description="Играйте в казуальные игры прямо в CLIN",
                 category=FeatureCategory.GAMES,
                 requires_telegram=False,
                 icon=ICONS.get("mini_games", "")

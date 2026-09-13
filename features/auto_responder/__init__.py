@@ -12,8 +12,8 @@ class AutoResponderModule(BaseFeatureModule):
         super().__init__(
             FeatureDefinition(
                 id="auto_responder",
-                name="Auto Responder",
-                description="Automatically respond using your custom rules",
+                name="Автоответчик",
+                description="Автоматические ответы по вашим правилам",
                 category=FeatureCategory.AUTOMATION,
                 requires_telegram=True,
                 icon=ICONS.get("auto_responder", "")
@@ -23,26 +23,22 @@ class AutoResponderModule(BaseFeatureModule):
 
     async def on_enable(self, user_id: int) -> None:
         logger.info(f"Enabling Auto Responder for user {user_id}")
-        try:
-            from core.bot_manager import bot_manager
-            client = bot_manager.get_client(user_id)
-            if client:
+        from telegram_client.manager import client_manager
+        from telegram_client.event_manager import event_manager
+        
+        has_session = await client_manager.has_active_session(user_id)
+        if has_session:
+            async with client_manager.get_client(user_id) as client:
                 handler = create_auto_responder_handler(user_id)
-                client.add_event_handler(handler, events.NewMessage(incoming=True))
+                await event_manager.register_handler(user_id, "auto_responder", client, events.NewMessage(incoming=True), handler)
                 self._handlers[user_id] = handler
-        except ImportError:
-            pass
 
     async def on_disable(self, user_id: int) -> None:
         logger.info(f"Disabling Auto Responder for user {user_id}")
-        try:
-            from core.bot_manager import bot_manager
-            client = bot_manager.get_client(user_id)
-            if client and user_id in self._handlers:
-                client.remove_event_handler(self._handlers[user_id])
-                del self._handlers[user_id]
-        except ImportError:
-            pass
+        from telegram_client.event_manager import event_manager
+        await event_manager.unregister_feature(user_id, "auto_responder")
+        if user_id in self._handlers:
+            del self._handlers[user_id]
 
     def get_default_settings(self) -> dict:
         return {

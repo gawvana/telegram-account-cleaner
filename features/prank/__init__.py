@@ -8,8 +8,8 @@ class PrankModule(BaseFeatureModule):
         super().__init__(
             FeatureDefinition(
                 id="prank",
-                name="Prank Tools",
-                description="Harmless fun prank text effects",
+                name="Инструменты для пранков",
+                description="Безобидные забавные текстовые эффекты",
                 category=FeatureCategory.FUN,
                 requires_telegram=False,
                 icon=ICONS.get("prank", "")

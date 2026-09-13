@@ -1,8 +1,6 @@
 import importlib
 from .base import BaseFeatureModule
-
-# Global registry of discovered features
-feature_registry = {}
+from features.registry import feature_registry
 
 def auto_discover_features():
     from features.deleted_messages import deleted_messages_module
@@ -28,7 +26,4 @@ def auto_discover_features():
     
     for mod in modules:
         mod.coming_soon = False
-        feature_registry[mod.feature_id] = mod
-        
-def get_feature(feature_id: str) -> BaseFeatureModule:
-    return feature_registry.get(feature_id)
+        feature_registry.register(mod)
