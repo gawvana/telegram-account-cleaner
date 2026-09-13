@@ -16,15 +16,26 @@ class Database:
         self.db_path = db_path or settings.DATABASE_PATH
         self._initialized = False
 
+    def _get_safe_path(self) -> str:
+        p = Path(self.db_path)
+        try:
+            resolved = str(p.resolve()).replace("\\", "/")
+            if "/var/task" in resolved or (os.name != "nt" and not os.access(p.parent if p.parent.exists() else Path("."), os.W_OK)):
+                return "/tmp/cleaner.db"
+        except Exception:
+            return "/tmp/cleaner.db"
+        return self.db_path
+
     @asynccontextmanager
     async def get_connection(self) -> AsyncGenerator[aiosqlite.Connection, None]:
         """Async context manager for SQLite connections with row factory configured."""
         if not self._initialized:
             await self.init_db()
-        db_parent = Path(self.db_path).parent
+        target_path = self._get_safe_path()
+        db_parent = Path(target_path).parent
         if db_parent and str(db_parent) != ".":
             db_parent.mkdir(parents=True, exist_ok=True)
-        async with aiosqlite.connect(self.db_path) as conn:
+        async with aiosqlite.connect(target_path) as conn:
             conn.row_factory = aiosqlite.Row
             await conn.execute("PRAGMA foreign_keys = ON;")
             try:
@@ -36,11 +47,12 @@ class Database:
     async def init_db(self) -> None:
         """Initializes all database tables and indexes."""
         self._initialized = True
-        logger.info(f"Initializing database at: {self.db_path}")
-        db_parent = Path(self.db_path).parent
+        target_path = self._get_safe_path()
+        logger.info(f"Initializing database at: {target_path}")
+        db_parent = Path(target_path).parent
         if db_parent and str(db_parent) != ".":
             db_parent.mkdir(parents=True, exist_ok=True)
-        async with aiosqlite.connect(self.db_path) as conn:
+        async with aiosqlite.connect(target_path) as conn:
             conn.row_factory = aiosqlite.Row
             await conn.execute("PRAGMA foreign_keys = ON;")
             try:

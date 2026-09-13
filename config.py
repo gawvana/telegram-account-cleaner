@@ -5,6 +5,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 
 
+def is_serverless() -> bool:
+    return bool(
+        os.environ.get("VERCEL")
+        or os.environ.get("VERCEL_ENV")
+        or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+        or os.environ.get("LAMBDA_TASK_ROOT")
+        or os.path.exists("/var/task")
+        or "/var/task" in str(Path(__file__).resolve()).replace("\\", "/")
+    )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -19,13 +30,13 @@ class Settings(BaseSettings):
     API_ID: int = Field(default=0, description="Telegram API ID from my.telegram.org")
     API_HASH: str = Field(default="", description="Telegram API HASH from my.telegram.org")
 
-    # Database & Storage (uses /tmp if in Vercel serverless environment)
+    # Database & Storage (uses /tmp in serverless environment)
     DATABASE_PATH: str = Field(
-        default_factory=lambda: "/tmp/cleaner.db" if os.environ.get("VERCEL") else "cleaner.db",
+        default_factory=lambda: "/tmp/cleaner.db" if is_serverless() else "cleaner.db",
         description="Path to SQLite database"
     )
     SESSION_DIR: str = Field(
-        default_factory=lambda: "/tmp/sessions" if os.environ.get("VERCEL") else "sessions",
+        default_factory=lambda: "/tmp/sessions" if is_serverless() else "sessions",
         description="Directory for encrypted session files"
     )
     LOG_LEVEL: str = Field(default="INFO", description="Logging level")
@@ -49,7 +60,7 @@ class Settings(BaseSettings):
 
     # Scheduler (disabled in serverless Vercel)
     SCHEDULER_ENABLED: bool = Field(
-        default_factory=lambda: False if os.environ.get("VERCEL") else True,
+        default_factory=lambda: False if is_serverless() else True,
         description="Enable automated scheduled jobs"
     )
     SCHEDULER_TIMEZONE: str = Field(default="UTC", description="Scheduler timezone")
