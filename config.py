@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 def is_serverless() -> bool:
@@ -135,6 +135,14 @@ class Settings(BaseSettings):
                 db_parent.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
+
+    @model_validator(mode="after")
+    def _apply_serverless_overrides(self) -> "Settings":
+        if is_serverless() or "/var/task" in str(Path(self.SESSION_DIR).resolve()).replace("\\", "/"):
+            object.__setattr__(self, "SESSION_DIR", "/tmp/sessions")
+            object.__setattr__(self, "DATABASE_PATH", "/tmp/cleaner.db")
+            object.__setattr__(self, "SCHEDULER_ENABLED", False)
+        return self
 
 
 settings = Settings()
