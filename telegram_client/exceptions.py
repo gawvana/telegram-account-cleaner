@@ -8,6 +8,26 @@ class AuthRequiredException(CleanerException):
     pass
 
 
+class InvalidPhoneError(CleanerException):
+    """Raised when the provided phone number is invalid or banned."""
+    pass
+
+
+class InvalidCodeError(CleanerException):
+    """Raised when the Telegram login code is incorrect or expired."""
+    pass
+
+
+class PasswordRequiredError(CleanerException):
+    """Raised when 2FA password is required to complete authentication."""
+    pass
+
+
+class InvalidPasswordError(CleanerException):
+    """Raised when the 2FA password provided is incorrect."""
+    pass
+
+
 class FloodWaitTimeoutException(CleanerException):
     """Raised when Telegram FloodWait exceeds acceptable automated sleep limit."""
     def __init__(self, seconds: int):

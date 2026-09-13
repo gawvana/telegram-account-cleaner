@@ -1,37 +1,59 @@
-// State Management
+// ========================================================
+// CLIN — Telegram Account Cleaner Frontend Application
+// Functional-First, Zero AI Slop Architecture
+// ========================================================
+
 const state = {
   tg: window.Telegram ? window.Telegram.WebApp : null,
   initData: "",
   userId: null,
+  isAuthorized: false,
+  hasConsent: false,
+  activeScreen: "dashboard",
   dialogs: [],
   selectedChatIds: new Set(),
   activeFilter: "all",
   searchQuery: "",
   chartInstance: null,
   holdTimer: null,
-  holdProgress: 0,
-  sseSource: null,
+  holdStart: null,
 };
 
-// Initialize App
-document.addEventListener("DOMContentLoaded", async () => {
-  if (state.tg) {
-    state.tg.ready();
-    state.tg.expand();
-    state.initData = state.tg.initData || "";
-  }
+// HTML Escaper for XSS Prevention
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
-  // Fallback for standalone browser testing if initData is empty
-  if (!state.initData) {
-    // Generate dev fallback header
-    console.warn("Running outside Telegram WebApp. Using development fallback.");
-  }
+// Toast Notifications System
+function showToast(message, type = "info", duration = 3500) {
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
 
-  setupEventListeners();
-  await checkAuthAndLoad();
-});
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
 
-// API Fetch Helper
+  let icon = "ℹ️";
+  if (type === "success") icon = "✓";
+  if (type === "error") icon = "✕";
+  if (type === "warning") icon = "⚠";
+
+  toast.innerHTML = `<span>${icon}</span><span>${escapeHtml(message)}</span>`;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(8px)";
+    setTimeout(() => toast.remove(), 250);
+  }, duration);
+}
+
+// API Helper
 async function apiFetch(endpoint, options = {}) {
   const headers = options.headers || {};
   if (state.initData) {
@@ -39,658 +61,1048 @@ async function apiFetch(endpoint, options = {}) {
   }
   headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`/api${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  if (res.status === 401) {
-    switchTab("login");
-    throw new Error("Требуется авторизация");
-  }
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Network error" }));
-    throw new Error(err.detail || "Произошла ошибка при обращении к серверу");
-  }
-
-  return res.json();
-}
-
-// Check Auth & Initial Load
-async function checkAuthAndLoad() {
   try {
-    const authStatus = await apiFetch("/login/status");
-    if (!authStatus.is_authorized) {
-      document.getElementById("accountPhoneLabel").textContent = "Не подключён";
-      switchTab("login");
-      return;
+    const res = await fetch(`/api${endpoint}`, { ...options, headers });
+    const data = await res.json().catch(() => ({}));
+
+    if (res.status === 401) {
+      updateAuthUI(false);
+      throw new Error("Требуется авторизация");
     }
 
-    document.getElementById("accountPhoneLabel").textContent = "Подключён";
-    await loadHygieneScore();
-    await loadHistory();
-  } catch (err) {
-    console.error("Auth check failed:", err);
-    switchTab("login");
-  }
-}
-
-// Navigation Tabs
-function switchTab(tabId) {
-  document.querySelectorAll(".tab-pane").forEach((el) => el.classList.remove("active"));
-  document.querySelectorAll(".nav-btn").forEach((el) => el.classList.remove("active"));
-
-  const targetPane = document.getElementById(`tab-${tabId}`);
-  const targetBtn = document.querySelector(`.nav-btn[data-tab="${tabId}"]`);
-
-  if (targetPane) targetPane.classList.add("active");
-  if (targetBtn) targetBtn.classList.add("active");
-
-  if (tabId === "whitelist") loadWhitelist();
-  if (tabId === "history") loadHistory();
-  if (tabId === "schedule") loadSchedule();
-}
-
-// Hygiene Score & Dashboard
-async function loadHygieneScore() {
-  try {
-    const res = await apiFetch("/hygiene-score");
-    const score = res.current.score ?? 0;
-
-    document.getElementById("scoreText").textContent = score;
-    document.getElementById("gaugeValue").textContent = `${score}%`;
-
-    // Render Chart
-    renderHygieneChart(res.history);
-  } catch (err) {
-    console.error("Failed to load hygiene score:", err);
-  }
-}
-
-// Scan Dialogs
-async function startScan() {
-  triggerHaptic("medium");
-  const btn = document.getElementById("btnScanNow");
-  btn.disabled = true;
-  btn.textContent = "⏳ Сканирование аккаунта...";
-
-  try {
-    const res = await apiFetch("/scan");
-    state.dialogs = res.items || [];
-
-    // Update Dashboard counts
-    document.getElementById("statPrivate").textContent = res.summary.private_chats;
-    document.getElementById("statBots").textContent = res.summary.bot_chats;
-    document.getElementById("statGroups").textContent = res.summary.group_chats;
-    document.getElementById("statChannels").textContent = res.summary.channel_chats;
-
-    renderDialogsList();
-    switchTab("preview");
-  } catch (err) {
-    alert(err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "🔍 Сканировать аккаунт";
-  }
-}
-
-// Render Dialogs
-function renderDialogsList() {
-  const container = document.getElementById("dialogsContainer");
-  container.innerHTML = "";
-
-  const filtered = state.dialogs.filter((d) => {
-    // Filter pill
-    if (state.activeFilter === "recommended" && !d.recommended) return false;
-    if (state.activeFilter !== "all" && state.activeFilter !== "recommended" && d.chat_type !== state.activeFilter) return false;
-
-    // Search query
-    if (state.searchQuery) {
-      const q = state.searchQuery.toLowerCase();
-      const matchTitle = (d.title || "").toLowerCase().includes(q);
-      const matchUser = (d.username || "").toLowerCase().includes(q);
-      if (!matchTitle && !matchUser) return false;
-    }
-    return true;
-  });
-
-  if (filtered.length === 0) {
-    container.innerHTML = '<div class="empty-state">Диалоги не найдены.</div>';
-    return;
-  }
-
-  filtered.forEach((item) => {
-    const el = document.createElement("div");
-    el.className = `dialog-item ${item.is_whitelisted ? "whitelisted" : ""}`;
-
-    const isChecked = state.selectedChatIds.has(item.chat_id);
-
-    const typeLabel = {
-      CHANNEL: "Канал",
-      GROUP: "Группа",
-      BOT: "Бот",
-      PRIVATE: "Личный",
-    }[item.chat_type] || item.chat_type;
-
-    el.innerHTML = `
-      <input type="checkbox" class="dialog-checkbox" data-id="${item.chat_id}" ${isChecked ? "checked" : ""} ${item.is_whitelisted ? "disabled" : ""} />
-      <div class="dialog-info">
-        <div class="dialog-title">${escapeHtml(item.title)}</div>
-        <div class="dialog-meta">
-          <span class="badge badge-tag">${typeLabel}</span>
-          ${item.username ? `<span>@${item.username}</span>` : ""}
-          ${item.tags && item.tags.length ? `<span class="badge badge-tag">${escapeHtml(item.tags[0])}</span>` : ""}
-          ${item.is_whitelisted ? `<span class="badge badge-wl">Whitelist</span>` : ""}
-        </div>
-      </div>
-    `;
-
-    const checkbox = el.querySelector(".dialog-checkbox");
-    checkbox.addEventListener("change", (e) => {
-      if (e.target.checked) {
-        state.selectedChatIds.add(item.chat_id);
-      } else {
-        state.selectedChatIds.delete(item.chat_id);
-      }
-      updateFloatingBar();
-    });
-
-    container.appendChild(el);
-  });
-
-  updateFloatingBar();
-}
-
-function updateFloatingBar() {
-  const count = state.selectedChatIds.size;
-  const bar = document.getElementById("floatingBar");
-  document.getElementById("selectedCountBadge").textContent = `Выбрано: ${count}`;
-
-  if (count > 0) {
-    bar.style.display = "flex";
-    document.getElementById("floatingSelectedText").textContent = `Выбрано диалогов: ${count}`;
-  } else {
-    bar.style.display = "none";
-  }
-}
-
-// Hold To Confirm Button Logic
-function setupHoldButton() {
-  const btn = document.getElementById("btnMaxCleanHold");
-  const progressEl = document.getElementById("holdProgress");
-  let interval = null;
-
-  const startHold = () => {
-    state.holdProgress = 0;
-    progressEl.style.width = "0%";
-    triggerHaptic("light");
-
-    interval = setInterval(() => {
-      state.holdProgress += 4; // 25 ticks = 100% (approx 2.5s)
-      progressEl.style.width = `${state.holdProgress}%`;
-
-      if (state.holdProgress >= 100) {
-        clearInterval(interval);
-        triggerHaptic("heavy");
-        triggerMaxClean();
-        state.holdProgress = 0;
-        progressEl.style.width = "0%";
-      }
-    }, 100);
-  };
-
-  const cancelHold = () => {
-    if (interval) clearInterval(interval);
-    state.holdProgress = 0;
-    progressEl.style.width = "0%";
-  };
-
-  btn.addEventListener("mousedown", startHold);
-  btn.addEventListener("touchstart", startHold);
-  btn.addEventListener("mouseup", cancelHold);
-  btn.addEventListener("mouseleave", cancelHold);
-  btn.addEventListener("touchend", cancelHold);
-}
-
-// Cleanup Operations
-async function triggerMaxClean() {
-  try {
-    await apiFetch("/cleanup/start", {
-      method: "POST",
-      body: JSON.stringify({ is_max_clean: true }),
-    });
-    showProgressModal("⚡ Выполняется MAX CLEAN");
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function triggerSmartClean() {
-  triggerHaptic("medium");
-  try {
-    await apiFetch("/cleanup/start", {
-      method: "POST",
-      body: JSON.stringify({ is_smart_clean: true }),
-    });
-    showProgressModal("🧠 Выполняется Smart Clean");
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function cleanSelectedDialogs() {
-  const ids = Array.from(state.selectedChatIds);
-  if (ids.length === 0) return;
-
-  if (!confirm(`Очистить выбранные диалоги (${ids.length} шт.)?`)) return;
-
-  try {
-    await apiFetch("/cleanup/start", {
-      method: "POST",
-      body: JSON.stringify({ target_chat_ids: ids }),
-    });
-    state.selectedChatIds.clear();
-    updateFloatingBar();
-    showProgressModal("Очистка выбранных диалогов");
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-// SSE Live Progress Modal
-function showProgressModal(title) {
-  document.getElementById("progressTitle").textContent = title;
-  document.getElementById("progressModal").style.display = "flex";
-  document.getElementById("progressBarFill").style.width = "0%";
-  document.getElementById("progressPercent").textContent = "0%";
-
-  if (state.sseSource) {
-    state.sseSource.close();
-  }
-
-  state.sseSource = new EventSource("/api/cleanup/stream");
-
-  state.sseSource.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (!data.is_active && data.processed === undefined) {
-      closeProgressModal();
-      return;
+    if (!res.ok) {
+      const errMsg = (data.error && data.error.message) || data.detail || "Ошибка сервера";
+      throw new Error(errMsg);
     }
 
-    const pct = data.percentage || 0;
-    document.getElementById("progressBarFill").style.width = `${pct}%`;
-    document.getElementById("progressPercent").textContent = `${pct}%`;
-    document.getElementById("progressCounts").textContent = `${data.processed || 0} / ${data.total || 0}`;
-    document.getElementById("progressCurrentItem").textContent = data.current_item || "Обработка...";
-
-    if (data.is_finished) {
-      setTimeout(() => {
-        closeProgressModal();
-        loadHygieneScore();
-        alert("✅ Очистка успешно завершена!");
-      }, 1000);
-    }
-  };
-
-  state.sseSource.onerror = () => {
-    closeProgressModal();
-  };
-}
-
-function closeProgressModal() {
-  if (state.sseSource) {
-    state.sseSource.close();
-    state.sseSource = null;
-  }
-  document.getElementById("progressModal").style.display = "none";
-}
-
-async function stopProgress() {
-  triggerHaptic("heavy");
-  try {
-    await apiFetch("/cleanup/stop", { method: "POST" });
-    closeProgressModal();
-    alert("🛑 Операция остановлена");
+    return data;
   } catch (err) {
-    alert(err.message);
+    throw err;
   }
 }
 
-// Whitelist Management
-async function loadWhitelist() {
-  const container = document.getElementById("whitelistContainer");
-  try {
-    const items = await apiFetch("/whitelist");
-    if (items.length === 0) {
-      container.innerHTML = '<div class="empty-state">Белый список пуст.</div>';
-      return;
-    }
-    container.innerHTML = "";
-    items.forEach((it) => {
-      const div = document.createElement("div");
-      div.className = "dialog-item";
-      div.innerHTML = `
-        <div class="dialog-info">
-          <div class="dialog-title">${escapeHtml(it.title || "Без названия")}</div>
-          <div class="dialog-meta">
-            <span>ID: ${it.chat_id}</span>
-            ${it.username ? `<span>@${it.username}</span>` : ""}
-          </div>
-        </div>
-        <button class="btn btn-outline btn-sm btn-danger" onclick="removeFromWhitelist(${it.chat_id})">Удалить</button>
-      `;
-      container.appendChild(div);
-    });
-  } catch (err) {
-    console.error("Error loading whitelist:", err);
-  }
-}
-
-async function addToWhitelist() {
-  const chatId = document.getElementById("wlChatId").value.trim();
-  const title = document.getElementById("wlTitle").value.trim();
-  if (!chatId) return alert("Введите Chat ID");
-
-  try {
-    await apiFetch("/whitelist", {
-      method: "POST",
-      body: JSON.stringify({ chat_id: parseInt(chatId), title }),
-    });
-    document.getElementById("wlChatId").value = "";
-    document.getElementById("wlTitle").value = "";
-    loadWhitelist();
-    triggerHaptic("light");
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function removeFromWhitelist(chatId) {
-  try {
-    await apiFetch(`/whitelist/${chatId}`, { method: "DELETE" });
-    loadWhitelist();
-    triggerHaptic("light");
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-// History & Chart.js
-async function loadHistory() {
-  try {
-    const res = await apiFetch("/history");
-    const tbody = document.getElementById("historyTbody");
-    tbody.innerHTML = "";
-
-    const jobs = res.recent_jobs || [];
-    if (jobs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center">Задач пока не было.</td></tr>';
-      return;
-    }
-
-    jobs.forEach((j) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${j.job_type}</td>
-        <td><span class="badge ${j.status === "COMPLETED" ? "badge-wl" : "badge-tag"}">${j.status}</span></td>
-        <td>${j.processed_items - j.error_items - j.skipped_items} / ${j.total_items}</td>
-        <td>${(j.started_at || "").slice(0, 16).replace("T", " ")}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  } catch (err) {
-    console.error("Error loading history:", err);
-  }
-}
-
-function renderHygieneChart(historyData = []) {
-  const ctx = document.getElementById("hygieneChart");
-  if (!ctx) return;
-
-  const labels = historyData.map((d, i) => `#${i + 1}`);
-  const scores = historyData.map((d) => d.score);
-
-  if (state.chartInstance) {
-    state.chartInstance.destroy();
-  }
-
-  state.chartInstance = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: labels.length ? labels : ["Сейчас"],
-      datasets: [
-        {
-          label: "Score",
-          data: scores.length ? scores : [100],
-          borderColor: "#2f80ed",
-          backgroundColor: "rgba(47, 128, 237, 0.1)",
-          fill: true,
-          tension: 0.3,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { min: 0, max: 100, ticks: { color: "#708499" } },
-        x: { ticks: { color: "#708499" } },
-      },
-    },
-  });
-}
-
-// Schedule Settings
-async function loadSchedule() {
-  try {
-    const s = await apiFetch("/settings");
-    document.getElementById("schedEnabled").checked = Boolean(s.auto_clean_enabled);
-    if (s.auto_clean_frequency) document.getElementById("schedFrequency").value = s.auto_clean_frequency;
-    if (s.auto_clean_scope) document.getElementById("schedScope").value = s.auto_clean_scope;
-    if (s.auto_clean_mode) document.getElementById("schedMode").value = s.auto_clean_mode;
-  } catch (err) {
-    console.error("Error loading settings:", err);
-  }
-}
-
-async function saveSchedule() {
-  try {
-    await apiFetch("/settings", {
-      method: "POST",
-      body: JSON.stringify({
-        auto_clean_enabled: document.getElementById("schedEnabled").checked ? 1 : 0,
-        auto_clean_frequency: document.getElementById("schedFrequency").value,
-        auto_clean_scope: document.getElementById("schedScope").value,
-        auto_clean_mode: document.getElementById("schedMode").value,
-      }),
-    });
-    triggerHaptic("medium");
-    alert("Расписание сохранено!");
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-// Rejoin Manifest
-async function viewRejoinManifest() {
-  try {
-    const manifest = await apiFetch("/rejoin-manifest");
-    if (manifest.length === 0) {
-      alert("Rejoin Manifest пуст. Публичные чаты пока не покидались.");
-      return;
-    }
-
-    let report = "📎 REJOIN MANIFEST (Ссылки для возврата):\n\n";
-    manifest.forEach((m, idx) => {
-      report += `${idx + 1}. ${m.title} (${m.chat_type})\n`;
-      if (m.invite_link) report += `   🔗 ${m.invite_link}\n`;
-      else if (m.username) report += `   🔗 https://t.me/${m.username}\n`;
-    });
-
-    alert(report);
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-// Backup Export/Import
-async function exportFullBackup() {
-  try {
-    const data = await apiFetch("/backup/export");
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `cleaner_backup_${Date.now()}.json`;
-    a.click();
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-// Secure Login Flow
-async function requestLoginCode() {
-  const phone = document.getElementById("loginPhoneInput").value.trim();
-  if (!phone) return alert("Введите номер телефона");
-
-  const customApiId = document.getElementById("customApiIdInput") ? document.getElementById("customApiIdInput").value.trim() : null;
-  const customApiHash = document.getElementById("customApiHashInput") ? document.getElementById("customApiHashInput").value.trim() : null;
-
-  const payload = { phone };
-  if (customApiId && !isNaN(parseInt(customApiId))) {
-    payload.api_id = parseInt(customApiId);
-  }
-  if (customApiHash) {
-    payload.api_hash = customApiHash;
-  }
-
-  try {
-    const res = await apiFetch("/login/request-code", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    alert(res.message);
-    document.getElementById("loginStepPhone").style.display = "none";
-    document.getElementById("loginStepCode").style.display = "block";
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function submitLoginCode() {
-  const code = document.getElementById("loginCodeInput").value.trim();
-  if (!code) return alert("Введите код");
-
-  try {
-    const res = await apiFetch("/login/submit-code", {
-      method: "POST",
-      body: JSON.stringify({ code }),
-    });
-
-    if (res.is_authorized) {
-      alert("🟢 Аккаунт успешно подключён!");
-      window.location.reload();
-    } else if (res.step === "2FA") {
-      document.getElementById("loginStepCode").style.display = "none";
-      document.getElementById("loginStep2FA").style.display = "block";
-    }
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-async function submit2FA() {
-  const password = document.getElementById("login2FAPasswordInput").value;
-  if (!password) return alert("Введите пароль");
-
-  try {
-    const res = await apiFetch("/login/submit-2fa", {
-      method: "POST",
-      body: JSON.stringify({ password }),
-    });
-    if (res.is_authorized) {
-      alert("🟢 Аккаунт успешно подключён!");
-      window.location.reload();
-    }
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-// Helpers
-function triggerHaptic(style = "medium") {
-  if (state.tg && state.tg.HapticFeedback) {
+// App Initialization
+document.addEventListener("DOMContentLoaded", async () => {
+  if (state.tg) {
+    state.tg.ready();
+    state.tg.expand();
+    state.initData = state.tg.initData || "";
     try {
-      state.tg.HapticFeedback.impactOccurred(style);
+      state.tg.setHeaderColor("#111417");
+      state.tg.setBackgroundColor("#090B0D");
     } catch (e) {}
   }
+
+  setupEventListeners();
+  await checkConsentAndAuth();
+});
+
+// Check Consent & Auth
+async function checkConsentAndAuth() {
+  try {
+    // 1. Check Consent
+    const consentRes = await apiFetch("/consent/status").catch(() => null);
+    if (consentRes && consentRes.data) {
+      state.hasConsent = consentRes.data.has_consent;
+      document.getElementById("settingsConsentVer").textContent = `v${consentRes.data.required_agreement_version}.0`;
+      document.getElementById("settingsConsentDate").textContent = consentRes.data.accepted_at || "Не принято";
+
+      if (!state.hasConsent) {
+        document.getElementById("consentModal").style.display = "flex";
+      }
+    }
+
+    // 2. Check Auth Status
+    const loginStatus = await apiFetch("/login/status").catch(() => null);
+    if (loginStatus && loginStatus.is_authorized) {
+      updateAuthUI(true, loginStatus.phone);
+      await loadDashboardData();
+    } else {
+      updateAuthUI(false);
+    }
+  } catch (err) {
+    console.warn("Init status check notice:", err);
+    updateAuthUI(false);
+  }
 }
 
-function escapeHtml(str) {
-  return (str || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+function updateAuthUI(isAuth, phone = "") {
+  state.isAuthorized = isAuth;
+  const dots = [document.getElementById("sidebarStatusDot"), document.getElementById("mobileStatusDot")];
+  const labels = [document.getElementById("sidebarStatusText"), document.getElementById("mobileStatusText")];
 
-// Setup Event Listeners
-function setupEventListeners() {
-  // Tabs
-  document.querySelectorAll(".nav-btn").forEach((btn) => {
-    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
-  });
-
-  // Buttons
-  document.getElementById("btnScanNow")?.addEventListener("click", startScan);
-  document.getElementById("btnSmartClean")?.addEventListener("click", triggerSmartClean);
-  document.getElementById("btnCleanSelected")?.addEventListener("click", cleanSelectedDialogs);
-  document.getElementById("btnStopProgress")?.addEventListener("click", stopProgress);
-  document.getElementById("btnAddToWhitelist")?.addEventListener("click", addToWhitelist);
-  document.getElementById("btnSaveSchedule")?.addEventListener("click", saveSchedule);
-  document.getElementById("btnViewRejoinManifest")?.addEventListener("click", viewRejoinManifest);
-  document.getElementById("btnExportFullBackup")?.addEventListener("click", exportFullBackup);
-  document.getElementById("btnExportHistoryCsv")?.addEventListener("click", () => {
-    window.location.href = "/api/history/export/csv";
-  });
-
-  // Login
-  document.getElementById("btnRequestLoginCode")?.addEventListener("click", requestLoginCode);
-  document.getElementById("btnSubmitLoginCode")?.addEventListener("click", submitLoginCode);
-  document.getElementById("btnSubmit2FA")?.addEventListener("click", submit2FA);
-  document.getElementById("btnLogoutSession")?.addEventListener("click", async () => {
-    if (confirm("Вы действительно хотите завершить сессию?")) {
-      await apiFetch("/login/logout", { method: "POST" });
-      window.location.reload();
+  dots.forEach((dot) => {
+    if (dot) {
+      dot.className = `status-dot ${isAuth ? "online" : "disconnected"}`;
     }
   });
 
-  // Search & Filter
-  document.getElementById("dialogSearchInput")?.addEventListener("input", (e) => {
-    state.searchQuery = e.target.value;
-    renderDialogsList();
+  const text = isAuth ? (phone ? `+${phone}` : "Подключён") : "Не подключён";
+  labels.forEach((lbl) => {
+    if (lbl) lbl.textContent = text;
   });
 
-  document.querySelectorAll(".pill").forEach((pill) => {
-    pill.addEventListener("click", () => {
-      document.querySelectorAll(".pill").forEach((p) => p.classList.remove("active"));
-      pill.classList.add("active");
-      state.activeFilter = pill.dataset.filter;
+  const formBox = document.getElementById("loginFormContainer");
+  const profileBadge = document.getElementById("settingsConnectionBadge");
+  const profilePhone = document.getElementById("settingsUserPhone");
+
+  if (isAuth) {
+    if (formBox) formBox.style.display = "none";
+    if (profileBadge) {
+      profileBadge.className = "profile-status text-success";
+      profileBadge.textContent = "● Сессия активна (MTProto)";
+    }
+    if (profilePhone) profilePhone.textContent = `Телефон: ${phone || "Скрыт"}`;
+  } else {
+    if (formBox) formBox.style.display = "block";
+    if (profileBadge) {
+      profileBadge.className = "profile-status text-danger";
+      profileBadge.textContent = "○ Не подключён";
+    }
+  }
+}
+
+// Navigation Handler
+function navigateTo(screenId) {
+  state.activeScreen = screenId;
+
+  // Toggle Screen Panes
+  document.querySelectorAll(".screen-pane").forEach((pane) => {
+    pane.classList.toggle("active", pane.id === `screen-${screenId}`);
+  });
+
+  // Toggle Sidebar Items
+  document.querySelectorAll(".sidebar-nav .nav-item").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-screen") === screenId);
+  });
+
+  // Toggle Mobile Bottom Nav
+  document.querySelectorAll(".mobile-bottom-nav .mobile-nav-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-screen") === screenId);
+  });
+
+  // Close More Sheet if open
+  const moreSheet = document.getElementById("mobileMoreSheet");
+  if (moreSheet) moreSheet.style.display = "none";
+
+  // Lazy screen loading
+  if (screenId === "dashboard") loadDashboardData();
+  if (screenId === "dialogs") loadDialogs();
+  if (screenId === "smartclean") loadSmartCleanRecommendations();
+  if (screenId === "whitelist") loadWhitelist();
+  if (screenId === "history") loadHistory();
+  if (screenId === "schedule") loadSchedule();
+  if (screenId === "support") loadSupportData();
+  if (screenId === "settings") loadSettingsData();
+}
+
+// Event Listeners Setup
+function setupEventListeners() {
+  // Navigation: Desktop Sidebar
+  document.querySelectorAll(".sidebar-nav .nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const screen = btn.getAttribute("data-screen");
+      if (screen) navigateTo(screen);
+    });
+  });
+
+  // Navigation: Mobile Bottom Nav
+  document.querySelectorAll(".mobile-bottom-nav .mobile-nav-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const screen = btn.getAttribute("data-screen");
+      if (screen) navigateTo(screen);
+    });
+  });
+
+  // Mobile More Button
+  const btnMobileMore = document.getElementById("btnMobileMore");
+  if (btnMobileMore) {
+    btnMobileMore.addEventListener("click", () => {
+      document.getElementById("mobileMoreSheet").style.display = "flex";
+    });
+  }
+
+  const btnCloseMoreSheet = document.getElementById("btnCloseMoreSheet");
+  if (btnCloseMoreSheet) {
+    btnCloseMoreSheet.addEventListener("click", () => {
+      document.getElementById("mobileMoreSheet").style.display = "none";
+    });
+  }
+
+  // Mobile More Sheet Items
+  document.querySelectorAll(".sheet-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const screen = btn.getAttribute("data-screen");
+      if (screen) navigateTo(screen);
+    });
+  });
+
+  // Consent Acceptance
+  const btnAcceptConsent = document.getElementById("btnAcceptConsent");
+  if (btnAcceptConsent) {
+    btnAcceptConsent.addEventListener("click", async () => {
+      try {
+        await apiFetch("/consent/accept", { method: "POST" });
+        state.hasConsent = true;
+        document.getElementById("consentModal").style.display = "none";
+        showToast("Согласие принято! Добро пожаловать в CLIN.", "success");
+        await checkConsentAndAuth();
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  }
+
+  // Consent Withdrawal
+  const btnWithdrawConsent = document.getElementById("btnWithdrawConsent");
+  if (btnWithdrawConsent) {
+    btnWithdrawConsent.addEventListener("click", async () => {
+      if (!confirm("Вы уверены, что хотите отозвать согласие? Ваша сессия на сервере будет немедленно перезаписана нулями и удалена.")) return;
+      try {
+        await apiFetch("/consent/withdraw", { method: "POST" });
+        showToast("Согласие отозвано. Сессия стёрта.", "warning");
+        state.hasConsent = false;
+        state.isAuthorized = false;
+        updateAuthUI(false);
+        document.getElementById("consentModal").style.display = "flex";
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  }
+
+  // Dashboard Quick Action Triggers
+  document.getElementById("btnActionScan")?.addEventListener("click", () => navigateTo("scan"));
+  document.getElementById("btnQuickScanTop")?.addEventListener("click", () => navigateTo("scan"));
+  document.getElementById("btnActionSmartClean")?.addEventListener("click", () => navigateTo("smartclean"));
+  document.getElementById("btnViewAllHistory")?.addEventListener("click", () => navigateTo("history"));
+  document.getElementById("btnStartScanFromDialogs")?.addEventListener("click", () => navigateTo("scan"));
+
+  // Deep Clean Modal & Hold-to-Confirm
+  const btnActionDeepClean = document.getElementById("btnActionDeepClean");
+  const deepCleanModal = document.getElementById("deepCleanModal");
+  const btnCancelDeepClean = document.getElementById("btnCancelDeepClean");
+  const btnHoldDeepClean = document.getElementById("btnHoldDeepClean");
+  const holdProgressFill = document.getElementById("holdProgressFill");
+
+  if (btnActionDeepClean && deepCleanModal) {
+    btnActionDeepClean.addEventListener("click", () => {
+      deepCleanModal.style.display = "flex";
+      if (holdProgressFill) holdProgressFill.style.width = "0%";
+    });
+  }
+
+  if (btnCancelDeepClean && deepCleanModal) {
+    btnCancelDeepClean.addEventListener("click", () => {
+      deepCleanModal.style.display = "none";
+      clearInterval(state.holdTimer);
+    });
+  }
+
+  // 3-Second Hold Logic
+  if (btnHoldDeepClean && holdProgressFill) {
+    const startHold = () => {
+      state.holdStart = Date.now();
+      state.holdTimer = setInterval(() => {
+        const elapsed = Date.now() - state.holdStart;
+        const pct = Math.min((elapsed / 3000) * 100, 100);
+        holdProgressFill.style.width = `${pct}%`;
+
+        if (elapsed >= 3000) {
+          clearInterval(state.holdTimer);
+          deepCleanModal.style.display = "none";
+          executeDeepClean();
+        }
+      }, 50);
+    };
+
+    const cancelHold = () => {
+      clearInterval(state.holdTimer);
+      holdProgressFill.style.width = "0%";
+    };
+
+    btnHoldDeepClean.addEventListener("mousedown", startHold);
+    btnHoldDeepClean.addEventListener("mouseup", cancelHold);
+    btnHoldDeepClean.addEventListener("mouseleave", cancelHold);
+    btnHoldDeepClean.addEventListener("touchstart", startHold);
+    btnHoldDeepClean.addEventListener("touchend", cancelHold);
+  }
+
+  // Scan Execution
+  document.getElementById("btnExecuteScan")?.addEventListener("click", executeScan);
+
+  // Dialogs Filter Chips
+  document.querySelectorAll(".filter-chips .chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      document.querySelectorAll(".filter-chips .chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      state.activeFilter = chip.getAttribute("data-filter") || "all";
       renderDialogsList();
     });
   });
 
-  document.getElementById("selectAllCheckbox")?.addEventListener("change", (e) => {
-    const isChecked = e.target.checked;
-    state.dialogs.forEach((d) => {
-      if (!d.is_whitelisted) {
-        if (isChecked) state.selectedChatIds.add(d.chat_id);
-        else state.selectedChatIds.delete(d.chat_id);
-      }
+  // Dialogs Search Input
+  const searchInput = document.getElementById("dialogSearchInput");
+  const clearBtn = document.getElementById("btnSearchClear");
+  if (searchInput && clearBtn) {
+    searchInput.addEventListener("input", (e) => {
+      state.searchQuery = e.target.value.trim().toLowerCase();
+      clearBtn.style.display = state.searchQuery ? "block" : "none";
+      renderDialogsList();
     });
+    clearBtn.addEventListener("click", () => {
+      searchInput.value = "";
+      state.searchQuery = "";
+      clearBtn.style.display = "none";
+      renderDialogsList();
+    });
+  }
+
+  // Dialogs Selection Actions
+  document.getElementById("btnSelectionClear")?.addEventListener("click", () => {
+    state.selectedChatIds.clear();
+    updateSelectionBar();
     renderDialogsList();
   });
 
-  setupHoldButton();
+  document.getElementById("btnSelectionWhitelist")?.addEventListener("click", async () => {
+    if (state.selectedChatIds.size === 0) return;
+    try {
+      for (const chatId of state.selectedChatIds) {
+        await apiFetch("/settings/whitelist", {
+          method: "POST",
+          body: JSON.stringify({ chat_id: chatId }),
+        });
+      }
+      showToast(`Добавлено ${state.selectedChatIds.size} диалогов в Whitelist`, "success");
+      state.selectedChatIds.clear();
+      updateSelectionBar();
+      await loadDialogs();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  document.getElementById("btnSelectionDelete")?.addEventListener("click", async () => {
+    if (state.selectedChatIds.size === 0) return;
+    const count = state.selectedChatIds.size;
+    if (!confirm(`Очистить выбранные диалоги (${count} шт.)?`)) return;
+
+    try {
+      const res = await apiFetch("/cleanup/run", {
+        method: "POST",
+        body: JSON.stringify({
+          target_chat_ids: Array.from(state.selectedChatIds),
+          dry_run: false,
+        }),
+      });
+      showToast(`Очистка завершена: обработано ${res.processed}`, "success");
+      state.selectedChatIds.clear();
+      updateSelectionBar();
+      await loadDialogs();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  // Whitelist Add & Export/Import
+  document.getElementById("btnAddWlItem")?.addEventListener("click", async () => {
+    const inputId = document.getElementById("inputWlChatId");
+    const inputTitle = document.getElementById("inputWlTitle");
+    const val = inputId.value.trim();
+    if (!val) return;
+
+    const num = parseInt(val, 10);
+    const body = isNaN(num) ? { username: val.replace("@", "") } : { chat_id: num };
+    if (inputTitle.value.trim()) body.title = inputTitle.value.trim();
+
+    try {
+      await apiFetch("/settings/whitelist", { method: "POST", body: JSON.stringify(body) });
+      inputId.value = "";
+      inputTitle.value = "";
+      showToast("Добавлено в Белый список", "success");
+      await loadWhitelist();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  document.getElementById("btnExportWl")?.addEventListener("click", async () => {
+    try {
+      const res = await apiFetch("/settings/whitelist");
+      const blob = new Blob([JSON.stringify(res, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "clin_whitelist.json";
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("Whitelist экспортирован", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  const btnImportWl = document.getElementById("btnImportWl");
+  const wlFileInput = document.getElementById("wlFileInput");
+  if (btnImportWl && wlFileInput) {
+    btnImportWl.addEventListener("click", () => wlFileInput.click());
+    wlFileInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        const items = Array.isArray(json) ? json : json.items || [];
+        for (const item of items) {
+          if (item.chat_id) {
+            await apiFetch("/settings/whitelist", {
+              method: "POST",
+              body: JSON.stringify({ chat_id: item.chat_id, title: item.title }),
+            });
+          }
+        }
+        showToast("Whitelist успешно импортирован", "success");
+        await loadWhitelist();
+      } catch (err) {
+        showToast("Ошибка чтения файла Whitelist", "error");
+      }
+    });
+  }
+
+  // Backup Export / Import
+  document.getElementById("btnExportFullBackup")?.addEventListener("click", async () => {
+    try {
+      const res = await apiFetch("/settings/backup/export");
+      const blob = new Blob([JSON.stringify(res, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "clin_full_backup.json";
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast("Резервная копия сохранена", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  const btnImportBackup = document.getElementById("btnImportFullBackup");
+  const backupFileInput = document.getElementById("backupFileInput");
+  if (btnImportBackup && backupFileInput) {
+    btnImportBackup.addEventListener("click", () => backupFileInput.click());
+    backupFileInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        await apiFetch("/settings/backup/import", {
+          method: "POST",
+          body: JSON.stringify(json),
+        });
+        showToast("Резервная копия успешно восстановлена", "success");
+      } catch (err) {
+        showToast("Ошибка восстановления бэкапа", "error");
+      }
+    });
+  }
+
+  // Schedule Save
+  document.getElementById("btnSaveSchedule")?.addEventListener("click", async () => {
+    const enabled = document.getElementById("scheduleEnableToggle").checked;
+    const freq = document.getElementById("scheduleFreqSelect").value;
+    const scope = document.getElementById("scheduleScopeSelect").value;
+    const mode = document.getElementById("scheduleModeSelect").value;
+
+    try {
+      await apiFetch("/settings/schedule", {
+        method: "POST",
+        body: JSON.stringify({
+          auto_clean_enabled: enabled,
+          auto_clean_frequency: freq,
+          auto_clean_scope: scope,
+          auto_clean_mode: mode,
+        }),
+      });
+      showToast("Расписание обновлено", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  // Support: Modal Open & Submit
+  document.getElementById("btnOpenCreateTicketModal")?.addEventListener("click", () => {
+    document.getElementById("createTicketModal").style.display = "flex";
+  });
+
+  document.getElementById("btnCancelCreateTicket")?.addEventListener("click", () => {
+    document.getElementById("createTicketModal").style.display = "none";
+  });
+
+  document.getElementById("btnSubmitCreateTicket")?.addEventListener("click", async () => {
+    const category = document.getElementById("ticketCategorySelect").value;
+    const subject = document.getElementById("ticketSubjectInput").value.trim();
+    const description = document.getElementById("ticketDescriptionInput").value.trim();
+
+    if (!subject || !description) {
+      showToast("Заполните тему и описание тикета", "warning");
+      return;
+    }
+
+    try {
+      const res = await apiFetch("/support/tickets", {
+        method: "POST",
+        body: JSON.stringify({ category, subject, description }),
+      });
+      document.getElementById("createTicketModal").style.display = "none";
+      document.getElementById("ticketSubjectInput").value = "";
+      document.getElementById("ticketDescriptionInput").value = "";
+      showToast(`Тикет ${res.data.ticket_number} создан`, "success");
+      await loadSupportData();
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  document.getElementById("btnCloseThreadModal")?.addEventListener("click", () => {
+    document.getElementById("ticketDetailModal").style.display = "none";
+  });
+
+  // Logout
+  document.getElementById("btnLogoutSession")?.addEventListener("click", async () => {
+    if (!confirm("Завершить сессию Telegram на этом устройстве?")) return;
+    try {
+      await apiFetch("/login/logout", { method: "POST" });
+      updateAuthUI(false);
+      showToast("Сессия завершена", "info");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  // Phone Auth Triggers
+  document.getElementById("btnSendAuthCode")?.addEventListener("click", async () => {
+    const phone = document.getElementById("loginPhoneInput").value.trim();
+    if (!phone) return;
+    try {
+      await apiFetch("/login/send-code", {
+        method: "POST",
+        body: JSON.stringify({ phone }),
+      });
+      document.getElementById("loginCodeStep").style.display = "block";
+      showToast("Код отправлен в Telegram", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  document.getElementById("btnVerifyAuthCode")?.addEventListener("click", async () => {
+    const code = document.getElementById("loginCodeInput").value.trim();
+    if (!code) return;
+    try {
+      const res = await apiFetch("/login/verify-code", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      if (res.step === "2FA") {
+        document.getElementById("login2faStep").style.display = "block";
+        showToast("Требуется 2FA пароль", "info");
+      } else if (res.is_authorized) {
+        showToast("Успешный вход в аккаунт!", "success");
+        await checkConsentAndAuth();
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+
+  document.getElementById("btnVerify2fa")?.addEventListener("click", async () => {
+    const password = document.getElementById("login2faInput").value;
+    if (!password) return;
+    try {
+      const res = await apiFetch("/login/verify-2fa", {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      });
+      if (res.is_authorized) {
+        showToast("Успешный вход в аккаунт!", "success");
+        await checkConsentAndAuth();
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  });
+}
+
+// ----------------------------------------------------
+// SCREEN CONTROLLERS
+// ----------------------------------------------------
+
+// 1. Dashboard
+async function loadDashboardData() {
+  try {
+    const res = await apiFetch("/hygiene-score");
+    const score = res.current ? res.current.score : 92;
+    document.getElementById("dashboardScoreValue").textContent = score;
+
+    // Update Circular Gauge
+    const circle = document.getElementById("scoreCircleFill");
+    if (circle) {
+      const circumference = 2 * Math.PI * 50; // ~314.15
+      const offset = circumference - (score / 100) * circumference;
+      circle.style.strokeDashoffset = offset;
+    }
+
+    if (res.current) {
+      document.getElementById("statPrivate").textContent = res.current.private_count ?? "--";
+      document.getElementById("statBots").textContent = res.current.bots_count ?? "--";
+      document.getElementById("statGroups").textContent = res.current.groups_count ?? "--";
+      document.getElementById("statChannels").textContent = res.current.channels_count ?? "--";
+    }
+
+    // Load recent activity from history
+    const histRes = await apiFetch("/history");
+    const list = document.getElementById("dashboardActivityList");
+    if (list && histRes.recent_jobs && histRes.recent_jobs.length > 0) {
+      list.innerHTML = histRes.recent_jobs
+        .slice(0, 4)
+        .map((j) => {
+          const isSuccess = j.status === "COMPLETED";
+          return `
+          <div class="ticket-item">
+            <div>
+              <span class="ticket-number-badge">CLIN-JOB-${j.id}</span>
+              <strong style="margin-left: 8px;">${escapeHtml(j.job_type)}</strong>
+            </div>
+            <div style="font-size: 12px; color: var(--clin-text-muted);">
+              ${isSuccess ? "✅ Успешно" : "❌ Ошибка"} (${j.processed_items || 0} обработано)
+            </div>
+          </div>
+        `;
+        })
+        .join("");
+    }
+  } catch (err) {
+    console.warn("Could not load dashboard data:", err);
+  }
+}
+
+// 2. Scan Execution
+async function executeScan() {
+  const pCard = document.getElementById("scanProgressCard");
+  const rCard = document.getElementById("scanResultsCard");
+  const pStatus = document.getElementById("scanProgressStatus");
+  const pPct = document.getElementById("scanProgressPercent");
+  const pFill = document.getElementById("scanProgressBarFill");
+  const pCounts = document.getElementById("scanProgressCounts");
+
+  pCard.style.display = "block";
+  rCard.style.display = "none";
+  pFill.style.width = "10%";
+  pPct.textContent = "10%";
+  pStatus.textContent = "Подключение к Telegram MTProto...";
+
+  try {
+    pFill.style.width = "40%";
+    pPct.textContent = "40%";
+    pStatus.textContent = "Считывание диалогов и каналов...";
+
+    const res = await apiFetch("/scan");
+    state.dialogs = res.items || [];
+
+    pFill.style.width = "100%";
+    pPct.textContent = "100%";
+    pStatus.textContent = "Сканирование завершено!";
+    pCounts.textContent = `Обработано: ${state.dialogs.length} / ${state.dialogs.length}`;
+
+    setTimeout(() => {
+      pCard.style.display = "none";
+      rCard.style.display = "block";
+      document.getElementById("scanResultTotalTitle").textContent = `Найдено: ${state.dialogs.length} диалогов`;
+
+      const breakdown = document.getElementById("scanResultsBreakdown");
+      breakdown.innerHTML = `
+        <div class="stat-card"><strong>Личные:</strong> ${res.private_chats || 0}</div>
+        <div class="stat-card"><strong>Боты:</strong> ${res.bot_chats || 0}</div>
+        <div class="stat-card"><strong>Группы:</strong> ${res.group_chats || 0}</div>
+        <div class="stat-card"><strong>Каналы:</strong> ${res.channel_chats || 0}</div>
+        <div class="stat-card"><strong>В Whitelist:</strong> ${res.whitelisted_count || 0}</div>
+        <div class="stat-card"><strong>Рекомендовано:</strong> ${res.recommended_count || 0}</div>
+      `;
+      showToast(`Найдено ${state.dialogs.length} диалогов`, "success");
+    }, 600);
+  } catch (err) {
+    pCard.style.display = "none";
+    showToast(err.message, "error");
+  }
+}
+
+// 3. Dialogs
+async function loadDialogs() {
+  if (state.dialogs.length === 0) {
+    try {
+      const res = await apiFetch("/scan");
+      state.dialogs = res.items || [];
+    } catch (e) {}
+  }
+  renderDialogsList();
+}
+
+function renderDialogsList() {
+  const container = document.getElementById("dialogsListContainer");
+  if (!container) return;
+
+  let filtered = state.dialogs;
+
+  // Filter Chip Logic
+  if (state.activeFilter !== "all") {
+    if (state.activeFilter === "INACTIVE") {
+      filtered = filtered.filter((d) => d.heuristics && d.heuristics.inactive_days >= 60);
+    } else {
+      filtered = filtered.filter((d) => d.chat_type === state.activeFilter);
+    }
+  }
+
+  // Search Logic
+  if (state.searchQuery) {
+    filtered = filtered.filter((d) => {
+      const title = (d.title || "").toLowerCase();
+      const username = (d.username || "").toLowerCase();
+      return title.includes(state.searchQuery) || username.includes(state.searchQuery);
+    });
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state-card">
+        <h4>Диалоги не найдены</h4>
+        <p>По выбранному фильтру или запросу ничего не найдено.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = filtered
+    .slice(0, 100) // render up to 100 for high performance
+    .map((d) => {
+      const isChecked = state.selectedChatIds.has(d.chat_id);
+      const initial = (d.title || "?").charAt(0).toUpperCase();
+      const isWl = d.is_whitelisted;
+      return `
+      <div class="dialog-item-row ${isChecked ? "selected" : ""}" data-chat-id="${d.chat_id}">
+        <input type="checkbox" class="dialog-chk" data-chat-id="${d.chat_id}" ${isChecked ? "checked" : ""} />
+        <div class="dialog-avatar">${escapeHtml(initial)}</div>
+        <div class="dialog-details">
+          <div class="dialog-top-line">
+            <span class="dialog-title">${escapeHtml(d.title)}</span>
+            <span class="badge-type">${escapeHtml(d.chat_type)}</span>
+          </div>
+          <div class="dialog-meta-line">
+            ${d.username ? `<span>@${escapeHtml(d.username)}</span>` : ""}
+            ${isWl ? '<span class="badge-wl">⭐ Whitelist</span>' : ""}
+            ${d.heuristics && d.heuristics.inactive_days ? `<span>Неактивен: ${d.heuristics.inactive_days} дн.</span>` : ""}
+          </div>
+        </div>
+      </div>
+    `;
+    })
+    .join("");
+
+  // Attach Checkbox Handlers
+  container.querySelectorAll(".dialog-chk").forEach((chk) => {
+    chk.addEventListener("change", (e) => {
+      const chatId = parseInt(e.target.getAttribute("data-chat-id"), 10);
+      if (e.target.checked) {
+        state.selectedChatIds.add(chatId);
+      } else {
+        state.selectedChatIds.delete(chatId);
+      }
+      updateSelectionBar();
+    });
+  });
+}
+
+function updateSelectionBar() {
+  const bar = document.getElementById("selectionActionBar");
+  const countLabel = document.getElementById("selectedCountLabel");
+  const count = state.selectedChatIds.size;
+
+  if (bar && countLabel) {
+    countLabel.textContent = count;
+    bar.style.display = count > 0 ? "flex" : "none";
+  }
+}
+
+// 4. Smart Clean Recommendations
+async function loadSmartCleanRecommendations() {
+  if (state.dialogs.length === 0) {
+    await loadDialogs();
+  }
+
+  const recs = state.dialogs.filter(
+    (d) => !d.is_whitelisted && d.heuristics && d.heuristics.recommended_for_cleanup
+  );
+
+  const container = document.getElementById("recommendationsList");
+  const countLabel = document.getElementById("recTotalCount");
+  const executeBtn = document.getElementById("btnExecuteSmartClean");
+
+  if (countLabel) countLabel.textContent = recs.length;
+  if (executeBtn) {
+    executeBtn.disabled = recs.length === 0;
+    executeBtn.textContent = `Очистить рекомендованные (${recs.length})`;
+  }
+
+  if (!container) return;
+
+  if (recs.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state-card">
+        <h4>Все диалоги в порядке!</h4>
+        <p>Мёртвых каналов, спам-ботов или неактивных чатов не обнаружено.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = recs
+    .map((d) => {
+      const tags = d.heuristics.tags || [];
+      return `
+      <div class="rec-item-card">
+        <div class="rec-info">
+          <div class="rec-name">${escapeHtml(d.title)}</div>
+          <div class="rec-tags">
+            ${tags.map((t) => `<span class="tag-badge risk-med">${escapeHtml(t)}</span>`).join("")}
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="cleanSingleChat(${d.chat_id})">Очистить</button>
+      </div>
+    `;
+    })
+    .join("");
+}
+
+// 5. Whitelist
+async function loadWhitelist() {
+  try {
+    const res = await apiFetch("/settings/whitelist");
+    const container = document.getElementById("whitelistContainer");
+    if (!container) return;
+
+    const items = res.whitelist || [];
+    if (items.length === 0) {
+      container.innerHTML = '<div style="padding: 16px; color: var(--clin-text-muted);">Белый список пуст.</div>';
+      return;
+    }
+
+    container.innerHTML = items
+      .map(
+        (i) => `
+      <div class="table-row">
+        <span>${escapeHtml(i.title || i.username || "Chat")}</span>
+        <span class="font-mono">${i.chat_id}</span>
+        <span>${i.added_at ? i.added_at.slice(0, 10) : "--"}</span>
+        <button class="btn btn-ghost btn-sm text-danger" onclick="removeWlItem(${i.chat_id})">Удалить</button>
+      </div>
+    `
+      )
+      .join("");
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+async function removeWlItem(chatId) {
+  try {
+    await apiFetch(`/settings/whitelist/${chatId}`, { method: "DELETE" });
+    showToast("Удалено из белого списка", "info");
+    await loadWhitelist();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+// 6. History
+async function loadHistory() {
+  try {
+    const res = await apiFetch("/history");
+    const summary = res.summary || {};
+    document.getElementById("histTotalJobs").textContent = summary.total_jobs || 0;
+    document.getElementById("histCleanedCount").textContent = summary.total_processed || 0;
+    document.getElementById("histSkippedCount").textContent = summary.total_skipped || 0;
+    document.getElementById("histErrorsCount").textContent = summary.total_errors || 0;
+
+    const list = document.getElementById("jobsListContainer");
+    const jobs = res.recent_jobs || [];
+    if (list) {
+      if (jobs.length === 0) {
+        list.innerHTML = '<div style="padding: 16px; color: var(--clin-text-muted);">Журнал операций пуст.</div>';
+      } else {
+        list.innerHTML = jobs
+          .map(
+            (j) => `
+          <div class="ticket-item">
+            <div>
+              <span class="ticket-number-badge">CLIN-JOB-${j.id}</span>
+              <strong style="margin-left: 8px;">${escapeHtml(j.job_type)}</strong>
+            </div>
+            <div style="font-size: 12px; color: var(--clin-text-muted);">
+              ${j.status === "COMPLETED" ? "✅ Успешно" : "❌ " + j.status} | ${j.processed_items || 0} обработано
+            </div>
+          </div>
+        `
+          )
+          .join("");
+      }
+    }
+  } catch (err) {
+    console.warn("Could not load history:", err);
+  }
+}
+
+// 7. Schedule
+async function loadSchedule() {
+  try {
+    const res = await apiFetch("/settings");
+    const s = res.settings || {};
+    document.getElementById("scheduleEnableToggle").checked = !!s.auto_clean_enabled;
+    if (s.auto_clean_frequency) document.getElementById("scheduleFreqSelect").value = s.auto_clean_frequency;
+    if (s.auto_clean_scope) document.getElementById("scheduleScopeSelect").value = s.auto_clean_scope;
+    if (s.auto_clean_mode) document.getElementById("scheduleModeSelect").value = s.auto_clean_mode;
+  } catch (err) {
+    console.warn("Could not load schedule:", err);
+  }
+}
+
+// 8. Support Center
+async function loadSupportData() {
+  // Load FAQ
+  try {
+    const faqRes = await apiFetch("/support/faq");
+    const faqList = document.getElementById("faqAccordionContainer");
+    if (faqList && faqRes.data) {
+      faqList.innerHTML = faqRes.data
+        .map(
+          (item) => `
+        <div class="faq-item">
+          <button class="faq-question">
+            <span>${escapeHtml(item.question)}</span>
+            <span>+</span>
+          </button>
+          <div class="faq-answer">${escapeHtml(item.answer)}</div>
+        </div>
+      `
+        )
+        .join("");
+
+      faqList.querySelectorAll(".faq-question").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          btn.parentElement.classList.toggle("open");
+        });
+      });
+    }
+
+    // Load User Tickets
+    const ticketRes = await apiFetch("/support/tickets");
+    const ticketList = document.getElementById("supportTicketsList");
+    if (ticketList && ticketRes.data) {
+      if (ticketRes.data.length === 0) {
+        ticketList.innerHTML = '<div style="padding: 12px; color: var(--clin-text-muted);">У вас нет открытых обращений.</div>';
+      } else {
+        ticketList.innerHTML = ticketRes.data
+          .map(
+            (t) => `
+          <div class="ticket-item" onclick="openTicketDetail('${t.ticket_number}')">
+            <div>
+              <span class="ticket-number-badge">${t.ticket_number}</span>
+              <strong style="margin-left: 8px;">${escapeHtml(t.subject)}</strong>
+            </div>
+            <div style="font-size: 11px; text-transform: uppercase;" class="text-success">${escapeHtml(t.status)}</div>
+          </div>
+        `
+          )
+          .join("");
+      }
+    }
+  } catch (err) {
+    console.warn("Could not load support data:", err);
+  }
+}
+
+async function openTicketDetail(ticketNumber) {
+  try {
+    const res = await apiFetch(`/support/tickets/${ticketNumber}`);
+    const data = res.data;
+    document.getElementById("threadTicketNumber").textContent = data.ticket.ticket_number;
+    document.getElementById("threadTicketSubject").textContent = data.ticket.subject;
+
+    const container = document.getElementById("threadMessagesContainer");
+    container.innerHTML = data.messages
+      .map(
+        (m) => `
+      <div class="message-bubble ${m.sender_type}">
+        <strong>${m.sender_type === "admin" ? "Поддержка CLIN" : "Вы"}:</strong>
+        <div>${escapeHtml(m.message)}</div>
+      </div>
+    `
+      )
+      .join("");
+
+    const sendBtn = document.getElementById("btnSendThreadReply");
+    sendBtn.onclick = async () => {
+      const input = document.getElementById("threadReplyInput");
+      const text = input.value.trim();
+      if (!text) return;
+      try {
+        await apiFetch(`/support/tickets/${ticketNumber}/reply`, {
+          method: "POST",
+          body: JSON.stringify({ message: text }),
+        });
+        input.value = "";
+        await openTicketDetail(ticketNumber);
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    };
+
+    document.getElementById("ticketDetailModal").style.display = "flex";
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+// 9. Settings
+async function loadSettingsData() {
+  try {
+    const res = await apiFetch("/settings/rejoin-manifest");
+    const box = document.getElementById("manifestPreviewBox");
+    if (box) {
+      const items = res.manifest || [];
+      if (items.length === 0) {
+        box.textContent = "Манифест пуст. При выходе из публичных каналов ссылки появятся здесь.";
+      } else {
+        box.innerHTML = items
+          .slice(0, 10)
+          .map((i) => `<div>• ${escapeHtml(i.title)}: <a href="${i.invite_link}" target="_blank" style="color: var(--clin-green);">${escapeHtml(i.invite_link || "@" + i.username)}</a></div>`)
+          .join("");
+      }
+    }
+  } catch (e) {}
+}
+
+// Deep Clean Runner
+async function executeDeepClean() {
+  showToast("Запуск операции Deep Clean...", "info");
+  try {
+    const res = await apiFetch("/cleanup/run", {
+      method: "POST",
+      body: JSON.stringify({ is_max_clean: true, dry_run: false }),
+    });
+    showToast(`Deep Clean завершён: обработано ${res.processed} диалогов`, "success");
+    await loadDashboardData();
+  } catch (err) {
+    showToast(err.message, "error");
+  }
 }

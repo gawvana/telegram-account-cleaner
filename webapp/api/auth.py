@@ -55,15 +55,21 @@ def validate_telegram_init_data(
         logger.warning("Telegram WebApp initData HMAC verification failed.")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="HMAC signature invalid")
 
-    # Step 5: Check auth_date expiration
+    # Step 5: Check auth_date expiration and clock skew
     auth_date_str = data_dict.get("auth_date")
     if not auth_date_str:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing auth_date")
 
     try:
         auth_date = int(auth_date_str)
-        if time.time() - auth_date > max_age_seconds:
-            logger.warning(f"Telegram initData expired (age: {int(time.time() - auth_date)}s)")
+        now = time.time()
+        # Clock skew / future timestamp check (max 60 seconds tolerance)
+        if auth_date > now + 60:
+            logger.warning(f"Telegram initData has future auth_date: {auth_date} > {now}")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="InitData timestamp is in the future")
+
+        if now - auth_date > max_age_seconds:
+            logger.warning(f"Telegram initData expired (age: {int(now - auth_date)}s)")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="InitData expired")
     except ValueError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed auth_date")
@@ -79,17 +85,19 @@ def validate_telegram_init_data(
 
 
 def create_access_token(data: dict, expires_delta_seconds: Optional[int] = None) -> str:
-    """Creates signed JWT token for session storage."""
+    """Creates signed JWT token for session storage using effective secret."""
     to_encode = data.copy()
     expire = time.time() + (expires_delta_seconds or (settings.JWT_EXPIRATION_MINUTES * 60))
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    secret = settings.get_effective_jwt_secret()
+    return jwt.encode(to_encode, secret, algorithm=settings.JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> dict:
     """Decodes and validates JWT token."""
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        secret = settings.get_effective_jwt_secret()
+        payload = jwt.decode(token, secret, algorithms=[settings.JWT_ALGORITHM])
         return payload
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

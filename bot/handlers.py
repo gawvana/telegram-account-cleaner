@@ -9,12 +9,14 @@ from bot.filters import UserContextFilter
 from bot.keyboards import (
     get_account_keyboard,
     get_category_confirm_keyboard,
+    get_consent_keyboard,
     get_lang_keyboard,
     get_main_menu_keyboard,
     get_max_clean_confirm_keyboard,
     get_minimal_start_keyboard,
     get_running_job_keyboard,
     get_smart_clean_keyboard,
+    get_support_keyboard,
     get_whitelist_keyboard,
 )
 from bot.states import AuthStates, ConfirmStates, WhitelistStates
@@ -22,10 +24,12 @@ from config import settings
 from database import db
 from services.backup_service import backup_service
 from services.cleanup_service import cleanup_service
+from services.consent_service import consent_service
 from services.crypto_service import crypto_service
 from services.hygiene_score_service import hygiene_score_service
 from services.preview_service import preview_service
 from services.statistics_service import statistics_service
+from services.support_service import support_service
 from services.whitelist_service import whitelist_service
 from telegram_client.auth import auth_manager
 from telegram_client.manager import client_manager
@@ -52,7 +56,50 @@ async def _get_user_lang(telegram_id: int) -> str:
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     lang = await _get_user_lang(message.from_user.id)
+    has_consent = await consent_service.has_valid_consent(message.from_user.id)
+    if not has_consent:
+        if lang == "uz":
+            consent_text = (
+                "⚖️ **CLIN — Telegram Account Cleaner**\n\n"
+                "Ishni boshlashdan oldin xizmat ko'rsatish qoidalari va maxfiylik siyosati bilan tanishing:\n\n"
+                "1. **Xavfsizlik**: Sessiya ma'lumotlari mahalliy ravishda AES-128 (Fernet) bilan shifrlanadi. Parollar va kodlar ochiq holda saqlanmaydi.\n"
+                "2. **Nazorat**: O'chiriladigan har qanday dialog sizning tasdiqlashingizni talab qiladi. Oq ro'yxatdagi chatlar hech qachon o'chirilmaydi.\n"
+                "3. **Rozilikni bekor qilish**: Istalgan vaqtda rozilikni bekor qilib, barcha ma'lumotlarni o'chirishingiz mumkin.\n\n"
+                "«Qabul qilish va davom etish» tugmasini bosish orqali qoidalarga rozilik bildirasiz."
+            )
+        elif lang == "en":
+            consent_text = (
+                "⚖️ **CLIN — Telegram Account Cleaner**\n\n"
+                "Before proceeding, please review and accept our Terms of Service & Privacy Policy:\n\n"
+                "1. **Security**: Your session data is encrypted locally using AES-128 (Fernet). Plaintext passwords or auth codes are never stored.\n"
+                "2. **User Control**: Every destructive action requires explicit confirmation. Whitelisted chats are strictly preserved.\n"
+                "3. **Revocation**: You can withdraw consent and instantly shred your session at any time.\n\n"
+                "By clicking 'Accept & Continue', you agree to CLIN terms."
+            )
+        else:
+            consent_text = (
+                "⚖️ **CLIN — Telegram Account Cleaner**\n\n"
+                "Перед началом работы, пожалуйста, ознакомьтесь с правилами использования и политикой конфиденциальности:\n\n"
+                "1. **Безопасность**: Ваши данные сессии шифруются локально алгоритмом AES-128 (Fernet). Пароли и коды никогда не сохраняются в открытом виде.\n"
+                "2. **Контроль**: Любые удаляемые диалоги требуют вашего подтверждения. Чаты из белого списка никогда не удаляются.\n"
+                "3. **Отзыв согласия**: Вы можете отозвать согласие и мгновенно стереть сессию в любой момент в Настройках.\n\n"
+                "Нажимая «Принять и продолжить», вы соглашаетесь с условиями сервиса."
+            )
+        await message.answer(consent_text, reply_markup=get_consent_keyboard(lang))
+        return
+
     await message.answer(
+        t("welcome_minimal", lang),
+        reply_markup=get_minimal_start_keyboard(lang),
+    )
+
+
+@router.callback_query(F.data == "cb:consent_accept")
+async def cb_consent_accept(call: CallbackQuery):
+    lang = await _get_user_lang(call.from_user.id)
+    await consent_service.record_user_consent(call.from_user.id)
+    await call.answer("✅ Согласие принято!" if lang == "ru" else "✅ Consent accepted!")
+    await call.message.edit_text(
         t("welcome_minimal", lang),
         reply_markup=get_minimal_start_keyboard(lang),
     )
@@ -62,6 +109,49 @@ async def cmd_start(message: Message, state: FSMContext):
 async def cmd_help(message: Message):
     lang = await _get_user_lang(message.from_user.id)
     await message.answer(t("welcome_minimal", lang), reply_markup=get_minimal_start_keyboard(lang))
+
+
+@router.message(Command("support"))
+async def cmd_support(message: Message):
+    lang = await _get_user_lang(message.from_user.id)
+    text = (
+        "💬 **Служба поддержки CLIN**\n\n"
+        "Возникли сложности или нашли баг? Откройте раздел поддержки в Mini App, чтобы создать тикет с номером `CLIN-XXXXX`.\n\n"
+        "⚠️ **Безопасность**: Служба поддержки CLIN никогда не запрашивает коды из SMS или 2FA-пароли!"
+    )
+    await message.answer(text, reply_markup=get_support_keyboard(lang))
+
+
+@router.message(Command("scan"))
+async def cmd_scan(message: Message):
+    lang = await _get_user_lang(message.from_user.id)
+    await message.answer("🔍 **Сканирование диалогов**\nЗапустите сканирование в Mini App для подробного анализа:", reply_markup=get_minimal_start_keyboard(lang))
+
+
+@router.message(Command("clean"))
+async def cmd_clean(message: Message):
+    lang = await _get_user_lang(message.from_user.id)
+    await message.answer("🧹 **Очистка аккаунта CLIN**\nОткройте Mini App для выбора категорий и умной очистки:", reply_markup=get_minimal_start_keyboard(lang))
+
+
+@router.message(Command("history"))
+async def cmd_history_command(message: Message):
+    lang = await _get_user_lang(message.from_user.id)
+    stats = await statistics_service.get_user_statistics(message.from_user.id)
+    summary = stats.get("summary") or {}
+    text = (
+        f"📊 **История очисток CLIN**\n\n"
+        f"Всего запусков: `{summary.get('total_jobs', 0)}`\n"
+        f"Обработано: `{summary.get('total_processed', 0)}`\n"
+        f"Пропущено (Whitelist): `{summary.get('total_skipped', 0)}`\n"
+        f"Ошибок: `{summary.get('total_errors', 0)}`"
+    )
+    await message.answer(text, reply_markup=get_minimal_start_keyboard(lang))
+
+
+@router.message(Command("settings"))
+async def cmd_settings(message: Message):
+    await cmd_account(message)
 
 
 @router.message(Command("account"))
@@ -145,6 +235,18 @@ async def cb_main_menu(call: CallbackQuery, state: FSMContext):
 async def cb_help(call: CallbackQuery):
     lang = await _get_user_lang(call.from_user.id)
     await call.message.edit_text(t("help_text", lang), reply_markup=get_main_menu_keyboard(lang))
+    await call.answer()
+
+
+@router.callback_query(F.data == "cb:support_menu")
+async def cb_support_menu(call: CallbackQuery):
+    lang = await _get_user_lang(call.from_user.id)
+    text = (
+        "💬 **Служба поддержки CLIN**\n\n"
+        "Вы можете отправить тикет, просмотреть историю обращений и ответы администраторов в Mini App.\n\n"
+        "⚠️ **Безопасность**: Никогда не сообщайте коды авторизации или пароли!"
+    )
+    await call.message.edit_text(text, reply_markup=get_support_keyboard(lang))
     await call.answer()
 
 

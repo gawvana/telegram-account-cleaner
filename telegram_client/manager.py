@@ -8,20 +8,21 @@ from telethon.sessions import StringSession
 from config import settings
 from database import db
 from services.crypto_service import crypto_service
+from telegram_client.base import ITelegramClientAdapter
 from telegram_client.exceptions import (
     AuthRequiredException,
     ConcurrentJobError,
     SessionCorruptedError,
 )
+from telegram_client.telethon_adapter import TelethonAdapter
 from utils.logger import logger
 
 
 class ClientManager:
-    """Manages secure loading, per-user locks, and lifecycle of Telethon clients."""
+    """Manages secure loading, per-user locks, and lifecycle of Telegram client adapters."""
 
     def __init__(self):
         self._user_locks: Dict[int, asyncio.Lock] = {}
-        self._active_clients: Dict[int, TelegramClient] = {}
         self._global_lock = asyncio.Lock()
 
     async def get_user_lock(self, telegram_id: int) -> asyncio.Lock:
@@ -29,6 +30,10 @@ class ClientManager:
             if telegram_id not in self._user_locks:
                 self._user_locks[telegram_id] = asyncio.Lock()
             return self._user_locks[telegram_id]
+
+    def get_user_session_dir(self, telegram_id: int) -> Path:
+        """Returns isolated session directory for user."""
+        return Path(settings.SESSION_DIR) / "users" / str(telegram_id)
 
     async def has_active_session(self, telegram_id: int) -> bool:
         """Checks whether the user has a valid encrypted session on disk."""
@@ -40,7 +45,8 @@ class ClientManager:
             row = await cursor.fetchone()
             if not row or not row["is_active"]:
                 return False
-            return Path(row["session_path"]).exists()
+            p = Path(row["session_path"])
+            return p.exists() and p.stat().st_size > 0
 
     async def load_client(self, telegram_id: int) -> TelegramClient:
         """Decrypts session from disk into an in-memory Telethon client."""
@@ -73,16 +79,27 @@ class ClientManager:
             logger.error(f"Failed to decrypt session for {telegram_id}: {e}")
             raise SessionCorruptedError("Не удалось расшифровать сессию. Возможно, изменился мастер-ключ.")
 
+        # Check for user custom credentials
+        custom_cred = await db.get_user_credentials(telegram_id)
+        api_id = settings.effective_api_id
+        api_hash = settings.effective_api_hash
+        if custom_cred and custom_cred.get("encrypted_api_id") and custom_cred.get("encrypted_api_hash"):
+            try:
+                api_id = int(crypto_service.decrypt_string(custom_cred["encrypted_api_id"], user_salt))
+                api_hash = crypto_service.decrypt_string(custom_cred["encrypted_api_hash"], user_salt)
+            except Exception as e:
+                logger.warning(f"Failed to decrypt custom credentials for {telegram_id}: {e}")
+
         client = TelegramClient(
             StringSession(decrypted_str),
-            settings.effective_api_id,
-            settings.effective_api_hash,
+            api_id,
+            api_hash,
         )
         return client
 
     @asynccontextmanager
     async def get_client(self, telegram_id: int) -> AsyncGenerator[TelegramClient, None]:
-        """Provides a locked, authenticated Telethon client context."""
+        """Provides a locked, authenticated Telethon client context (legacy support)."""
         lock = await self.get_user_lock(telegram_id)
         if lock.locked():
             raise ConcurrentJobError("На вашем аккаунте уже выполняется операция. Подождите её завершения.")
@@ -98,8 +115,27 @@ class ClientManager:
                 if client.is_connected():
                     await client.disconnect()
 
+    @asynccontextmanager
+    async def get_adapter(self, telegram_id: int) -> AsyncGenerator[ITelegramClientAdapter, None]:
+        """Provides a locked, authenticated ITelegramClientAdapter context."""
+        lock = await self.get_user_lock(telegram_id)
+        if lock.locked():
+            raise ConcurrentJobError("На вашем аккаунте уже выполняется операция. Подождите её завершения.")
+
+        async with lock:
+            client = await self.load_client(telegram_id)
+            adapter = TelethonAdapter(client)
+            await adapter.connect()
+            try:
+                if not await adapter.is_user_authorized():
+                    raise AuthRequiredException("Сессия Telegram устарела. Авторизуйтесь заново.")
+                yield adapter
+            finally:
+                if await adapter.is_connected():
+                    await adapter.disconnect()
+
     async def logout_user(self, telegram_id: int) -> None:
-        """Securely deletes session file and marks session as inactive."""
+        """Securely deletes session file and marks session as inactive with path traversal protection."""
         lock = await self.get_user_lock(telegram_id)
         async with lock:
             async with db.get_connection() as conn:
@@ -107,12 +143,26 @@ class ClientManager:
                     "SELECT session_path FROM sessions WHERE telegram_id = ?", (telegram_id,)
                 )
                 row = await cursor.fetchone()
-                if row:
-                    path = Path(row["session_path"])
-                    if path.exists():
+                if row and row["session_path"]:
+                    target_path = Path(row["session_path"]).resolve()
+                    session_base = Path(settings.SESSION_DIR).resolve()
+
+                    # Prevent path traversal outside session_dir
+                    try:
+                        target_path.relative_to(session_base)
+                        is_safe_path = True
+                    except ValueError:
+                        is_safe_path = False
+
+                    if is_safe_path and target_path.exists():
                         # Overwrite with zeros before unlinking
-                        path.write_bytes(b"\x00" * path.stat().st_size)
-                        path.unlink()
+                        try:
+                            file_size = target_path.stat().st_size
+                            target_path.write_bytes(b"\x00" * max(file_size, 64))
+                            target_path.unlink()
+                        except Exception as e:
+                            logger.warning(f"Error securely shredding session file {target_path}: {e}")
+
                 await conn.execute(
                     "UPDATE sessions SET is_active = 0 WHERE telegram_id = ?", (telegram_id,)
                 )

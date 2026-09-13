@@ -2,7 +2,10 @@
 sessions/
 *.session
 *.session-journal
-cleaner.db
+cleaner.db*
+*.db
+*.db-journal
+*.bak*
 __pycache__/
 *.pyc
 *.pyo
@@ -15,5 +18,4 @@ htmlcov/
 .DS_Store
 Thumbs.db
 .vercel/
-
 .vercel

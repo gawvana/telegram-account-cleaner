@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Request
+import secrets
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from aiogram import Bot, Dispatcher
@@ -16,10 +17,12 @@ from config import settings
 from database import db
 from services.scheduler_service import scheduler_service
 from webapp.api.cleanup import router as cleanup_router
+from webapp.api.consent import router as consent_router
 from webapp.api.history import router as history_router
 from webapp.api.login import router as login_router
 from webapp.api.scan import router as scan_router
 from webapp.api.settings import router as settings_router
+from webapp.api.support import router as support_router
 from utils.logger import logger
 
 # Initialize Dispatcher for processing webhook updates
@@ -30,8 +33,9 @@ bot_dp.include_router(bot_router)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting FastAPI WebApp Server...")
+    logger.info("Starting CLIN FastAPI WebApp Server...")
     await db.init_db()
+
     if settings.SCHEDULER_ENABLED:
         scheduler_service.start()
         await scheduler_service.sync_all_schedules()
@@ -41,22 +45,44 @@ async def lifespan(app: FastAPI):
         try:
             webhook_url = f"{settings.WEBAPP_URL.rstrip('/')}/api/webhook"
             async with Bot(token=settings.BOT_TOKEN) as b:
-                await b.set_webhook(url=webhook_url, drop_pending_updates=False)
-                logger.info(f"Telegram Bot webhook registered: {webhook_url}")
+                await b.set_webhook(
+                    url=webhook_url,
+                    drop_pending_updates=False,
+                    secret_token=settings.WEBHOOK_SECRET_TOKEN or None,
+                )
+                logger.info(f"CLIN Telegram Bot webhook registered: {webhook_url}")
         except Exception as e:
             logger.warning(f"Could not automatically set webhook on startup: {e}")
 
     yield
     # Shutdown
-    logger.info("Shutting down FastAPI WebApp Server...")
-    scheduler_service.shutdown()
+    logger.info("Shutting down CLIN FastAPI WebApp Server...")
+    if settings.SCHEDULER_ENABLED:
+        scheduler_service.shutdown()
 
 
 app = FastAPI(
-    title="Maximum Telegram Account Cleaner - Mini App API",
-    version="2.0.0",
+    title="CLIN — Telegram Account Cleaner API",
+    version="2.1.0",
     lifespan=lifespan,
 )
+
+# Standardized Error Handling
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    request_id = f"CLIN-{secrets.randbelow(90000) + 10000}"
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "error": {
+                "code": exc.status_code,
+                "message": exc.detail,
+                "request_id": request_id,
+            },
+        },
+    )
+
 
 # CORS configuration
 app.add_middleware(
@@ -73,6 +99,8 @@ app.include_router(scan_router, prefix="/api")
 app.include_router(cleanup_router, prefix="/api")
 app.include_router(history_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
+app.include_router(consent_router, prefix="/api")
+app.include_router(support_router, prefix="/api")
 
 # Static files for Mini App
 public_path = Path(__file__).parent / "public"
@@ -90,7 +118,15 @@ if static_path.exists():
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request):
     if not settings.BOT_TOKEN:
-        return {"ok": False, "error": "BOT_TOKEN not configured"}
+        return JSONResponse(status_code=500, content={"ok": False, "error": "BOT_TOKEN not configured"})
+
+    # Validate secret token if configured
+    if settings.WEBHOOK_SECRET_TOKEN:
+        token_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if token_header != settings.WEBHOOK_SECRET_TOKEN:
+            logger.warning("Rejected webhook request with invalid secret token")
+            return JSONResponse(status_code=403, content={"ok": False, "error": "Invalid webhook secret token"})
+
     try:
         data = await request.json()
         async with Bot(
@@ -106,15 +142,21 @@ async def telegram_webhook(request: Request):
 
 
 @app.get("/api/setup-webhook")
-async def setup_webhook():
+async def setup_webhook(secret: str = ""):
     if not settings.BOT_TOKEN:
         return {"ok": False, "error": "BOT_TOKEN not configured"}
+
+    # Basic authorization check for setup endpoint
+    if settings.WEBHOOK_SECRET_TOKEN and secret != settings.WEBHOOK_SECRET_TOKEN:
+        return JSONResponse(status_code=403, content={"ok": False, "error": "Unauthorized"})
+
     webhook_url = f"{settings.WEBAPP_URL.rstrip('/')}/api/webhook"
     async with Bot(token=settings.BOT_TOKEN) as bot:
         res = await bot.set_webhook(
             url=webhook_url,
             drop_pending_updates=True,
             allowed_updates=["message", "callback_query"],
+            secret_token=settings.WEBHOOK_SECRET_TOKEN or None,
         )
         info = await bot.get_webhook_info()
         return {
@@ -153,12 +195,12 @@ async def webhook_info():
 @app.get("/api/health")
 @app.get("/api/index.py")
 async def health_check(request: Request = None):
-    headers = dict(request.headers) if request else {}
+    # Safe healthcheck without leaking request headers
     return {
         "status": "ok",
-        "version": "2.0.0",
-        "path": request.url.path if request else None,
-        "headers": headers,
+        "app": "CLIN",
+        "version": "2.1.0",
+        "timestamp": 1789287000,
     }
 
 

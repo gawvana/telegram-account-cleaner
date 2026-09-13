@@ -173,10 +173,17 @@ class AuthManager:
         encrypted_session = crypto_service.encrypt_string(session_str, user_salt)
 
         # Write to secure user directory
-        user_session_dir = Path(settings.SESSION_DIR) / str(telegram_id)
+        user_session_dir = Path(settings.SESSION_DIR) / "users" / str(telegram_id)
         user_session_dir.mkdir(parents=True, exist_ok=True)
-        session_file = user_session_dir / "account.enc"
+        session_file = user_session_dir / "session.enc"
         session_file.write_text(encrypted_session, encoding="utf-8")
+
+        # Mask phone to prevent plaintext PII storage
+        clean_phone = pending.phone
+        if len(clean_phone) >= 7:
+            masked_phone = clean_phone[:3] + "***" + clean_phone[-4:]
+        else:
+            masked_phone = "***"
 
         # Update database
         async with db.get_connection() as conn:
@@ -193,7 +200,7 @@ class AuthManager:
             )
             await conn.execute(
                 "UPDATE users SET phone = ? WHERE telegram_id = ?",
-                (pending.phone, telegram_id),
+                (masked_phone, telegram_id),
             )
             await conn.commit()
 
@@ -211,7 +218,7 @@ class AuthManager:
         return (
             AuthState(
                 is_authorized=True,
-                phone=pending.phone,
+                phone=masked_phone,
                 step="AUTHORIZED",
             ),
             str(session_file),

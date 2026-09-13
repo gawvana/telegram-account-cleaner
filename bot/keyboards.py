@@ -3,9 +3,33 @@ from config import settings
 from utils.i18n import t
 
 
+def get_consent_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Consent gate keyboard for terms and privacy acceptance."""
+    if lang == "uz":
+        btn_accept = "✅ Qabul qilish va davom etish"
+    elif lang == "en":
+        btn_accept = "✅ Accept & Continue"
+    else:
+        btn_accept = "✅ Принять и продолжить"
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=btn_accept, callback_data="cb:consent_accept")
+            ]
+        ]
+    )
+
+
 def get_minimal_start_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
     """Minimalist Apple-style launch keyboard with a single prominent Mini App action button."""
-    btn_text = "✨ Открыть Cleaner Pro" if lang == "ru" else "✨ Open Cleaner Pro"
+    if lang == "uz":
+        btn_text = "🚀 CLIN-ni ochish"
+    elif lang == "en":
+        btn_text = "🚀 Open CLIN"
+    else:
+        btn_text = "🚀 Открыть CLIN"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -19,17 +43,17 @@ def get_minimal_start_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
 
 
 def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
-    """Constructs main menu inline keyboard matching specification Section 7."""
+    """Constructs main menu inline keyboard."""
     buttons = [
+        [
+            InlineKeyboardButton(
+                text="🚀 Открыть Mini App" if lang == "ru" else ("🚀 Open Mini App" if lang == "en" else "🚀 Mini App-ni ochish"),
+                web_app=WebAppInfo(url=settings.WEBAPP_URL),
+            )
+        ],
         [
             InlineKeyboardButton(text=t("btn_scan", lang), callback_data="cb:scan"),
             InlineKeyboardButton(text=t("btn_preview", lang), callback_data="cb:preview"),
-        ],
-        [
-            InlineKeyboardButton(
-                text=t("btn_webapp", lang),
-                web_app=WebAppInfo(url=settings.WEBAPP_URL),
-            )
         ],
         [
             InlineKeyboardButton(text=t("btn_private", lang), callback_data="cb:cat_prompt:PRIVATE"),
@@ -52,7 +76,7 @@ def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(text=t("btn_hygiene", lang), callback_data="cb:hygiene"),
-            InlineKeyboardButton(text=t("btn_export", lang), callback_data="cb:export_menu"),
+            InlineKeyboardButton(text="💬 Поддержка" if lang == "ru" else ("💬 Support" if lang == "en" else "💬 Qo'llab-quvvatlash"), callback_data="cb:support_menu"),
         ],
         [
             InlineKeyboardButton(text=t("btn_account", lang), callback_data="cb:account"),
@@ -61,6 +85,23 @@ def get_main_menu_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_support_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
+    """Support options keyboard."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💬 Открыть тикет в Mini App" if lang == "ru" else "💬 Open Ticket in Mini App",
+                    web_app=WebAppInfo(url=f"{settings.WEBAPP_URL}#screen-support"),
+                )
+            ],
+            [
+                InlineKeyboardButton(text="🔙 В главное меню", callback_data="cb:main_menu"),
+            ],
+        ]
+    )
 
 
 def get_whitelist_keyboard(lang: str = "ru") -> InlineKeyboardMarkup:
@@ -85,13 +126,7 @@ def get_account_keyboard(is_authorized: bool, lang: str = "ru") -> InlineKeyboar
                 [
                     InlineKeyboardButton(
                         text="🔐 Подключить безопасно (Mini App)",
-                        web_app=WebAppInfo(url=f"{settings.WEBAPP_URL}#tab-login"),
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="💬 Подключить через чат (Fallback)",
-                        callback_data="cb:chat_login_start",
+                        web_app=WebAppInfo(url=f"{settings.WEBAPP_URL}#screen-settings"),
                     )
                 ],
                 [InlineKeyboardButton(text=t("btn_back", lang), callback_data="cb:main_menu")],
@@ -150,6 +185,7 @@ def get_lang_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="🇷🇺 Русский", callback_data="cb:set_lang:ru"),
                 InlineKeyboardButton(text="🇬🇧 English", callback_data="cb:set_lang:en"),
+                InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="cb:set_lang:uz"),
             ],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="cb:main_menu")],
         ]

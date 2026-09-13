@@ -23,8 +23,18 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    # Brand & Identity
+    APP_NAME: str = "CLIN"
+    APP_TITLE: str = "CLIN — Telegram Account Cleaner"
+    APP_VERSION: str = "2.1.0"
+
+    # Consent Versions
+    AGREEMENT_VERSION: int = 1
+    PRIVACY_VERSION: int = 1
+
     # Telegram Bot
     BOT_TOKEN: str = Field(default="", description="Telegram Bot API Token")
+    WEBHOOK_SECRET_TOKEN: str = Field(default="", description="Secret token for Telegram Webhook validation")
 
     # Telegram MTProto User API (Defaults to official Telegram Desktop client)
     API_ID: int = Field(default=2040, description="Telegram API ID (defaults to official Telegram Desktop client)")
@@ -60,11 +70,16 @@ class Settings(BaseSettings):
         description="Base64 Fernet master key for encrypting sessions and sensitive fields"
     )
     JWT_SECRET: str = Field(
-        default="telegram-account-cleaner-secret-key-change-in-prod",
-        description="Secret key for signing JWT tokens"
+        default="",
+        description="Secret key for signing JWT tokens (if empty, derived securely or generated)"
     )
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_MINUTES: int = 1440  # 24 hours
+
+    # Rate Limiting
+    RATE_LIMIT_AUTH: str = "5/minute"
+    RATE_LIMIT_SCAN: str = "3/minute"
+    RATE_LIMIT_CLEANUP: str = "2/minute"
 
     # Scheduler (disabled in serverless Vercel)
     SCHEDULER_ENABLED: bool = Field(
@@ -74,13 +89,25 @@ class Settings(BaseSettings):
     SCHEDULER_TIMEZONE: str = Field(default="UTC", description="Scheduler timezone")
 
     # Internationalization
-    DEFAULT_LANGUAGE: str = Field(default="ru", description="Default language (ru / en)")
+    DEFAULT_LANGUAGE: str = Field(default="ru", description="Default language (ru / en / uz)")
 
     # Rate Limiting & Safety Limits
     MAX_CONCURRENT_CLIENTS: int = 10
     FLOOD_WAIT_MAX_SLEEP: int = 120  # Max seconds to sleep automatically on FloodWait
     MAX_RETRIES: int = 3
     RATE_LIMIT_DELAY: float = 0.5  # Seconds between destructive actions
+
+    def get_effective_jwt_secret(self) -> str:
+        """Returns the configured JWT_SECRET or falls back to a deterministic hash of BOT_TOKEN / MASTER_KEY."""
+        if self.JWT_SECRET and self.JWT_SECRET != "telegram-account-cleaner-secret-key-change-in-prod":
+            return self.JWT_SECRET
+        if self.ENCRYPTION_MASTER_KEY:
+            import hashlib
+            return hashlib.sha256(f"clin-jwt:{self.ENCRYPTION_MASTER_KEY}".encode()).hexdigest()
+        if self.BOT_TOKEN:
+            import hashlib
+            return hashlib.sha256(f"clin-jwt:{self.BOT_TOKEN}".encode()).hexdigest()
+        return "clin-ephemeral-secret-key-development-only"
 
     def ensure_directories(self) -> None:
         """Ensure necessary storage directories exist."""
